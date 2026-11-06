@@ -265,16 +265,28 @@ class WorktreeOracle:
             patch_text,
         )
 
-    def _cached(self, key: str) -> RunResult | None:
-        with self._lock:
-            hit = self.cache.get(key)
+    def _usable(self, hit: dict | None) -> bool:
         if hit is None:
-            return None
+            return False
         if hit.get("reason") == "timeout" and hit.get("timeout", 0.0) < self.timeout:
             # Timed out under a shorter limit than the current one: run again.
-            return None
+            return False
         if hit["outcome"] != Outcome.UNRESOLVED.value and hit.get("reruns", 0) < self.reruns:
             # A pass or fail confirmed by fewer runs than asked for now: run again.
+            return False
+        return True
+
+    def _cached(self, key: str) -> RunResult | None:
+        """The cached result for ``key`` if it can stand for a fresh run.
+
+        Only an entry that is used counts as a cache hit; an entry ignored
+        for a shorter timeout or fewer reruns counts as a miss.
+        """
+        with self._lock:
+            hit = self.cache.peek(key)
+            usable = self._usable(hit)
+            self.cache.count(usable)
+        if not usable or hit is None:
             return None
         return RunResult(
             Outcome(hit["outcome"]), hit["seconds"], hit.get("returncode"), cached=True,

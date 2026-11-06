@@ -32,15 +32,25 @@ class RunCache:
         if path is not None and path.exists():
             self.data = json.loads(path.read_text())
 
-    def get(self, key: str) -> dict | None:
-        value = self.data.get(key)
-        if value is None:
-            self.misses += 1
-        else:
+    def peek(self, key: str) -> dict | None:
+        """The stored value for ``key``, or None; counts nothing."""
+        return self.data.get(key)
+
+    def count(self, hit: bool) -> None:
+        """Count one lookup as a hit or a miss."""
+        if hit:
             self.hits += 1
+        else:
+            self.misses += 1
+
+    def get(self, key: str) -> dict | None:
+        """The stored value for ``key``, or None, counted as a hit or a miss."""
+        value = self.peek(key)
+        self.count(value is not None)
         return value
 
     def put(self, key: str, value: dict) -> None:
+        """Store ``value`` under ``key`` and rewrite the file, if there is one."""
         self.data[key] = value
         if self.path is not None:
             self.path.parent.mkdir(parents=True, exist_ok=True)

@@ -100,3 +100,18 @@ def test_cached_outcome_is_reused_by_a_new_oracle(fixture_repo, tmp_path):
     r2 = second.run("")
     assert r2.cached and r2.outcome is r1.outcome
     assert second.runs == 0
+
+
+def test_rejected_cache_entries_are_not_counted_as_hits(fixture_repo, tmp_path):
+    from patchmin.oracle import WorktreeOracle
+
+    path = tmp_path / "c.json"
+    args = (fixture_repo["repo"], fixture_repo["base"], fixture_repo["test_cmd"])
+    with WorktreeOracle(*args, cache=RunCache(path)) as oracle:
+        oracle.run("")
+    cache = RunCache(path)
+    with WorktreeOracle(*args, cache=cache, reruns=1) as oracle:
+        result = oracle.run("")
+    assert not result.cached
+    assert (cache.hits, cache.misses) == (0, 1)
+
