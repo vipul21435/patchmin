@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import builtins
+import keyword
 import re
 from dataclasses import dataclass, field
 
@@ -340,6 +342,11 @@ def classify_hunk(hunk: Hunk) -> str:
 
 
 _TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|\d+|\S")
+_NOT_NAMES = frozenset(keyword.kwlist) | frozenset(dir(builtins))
+
+
+def _is_name(token: str) -> bool:
+    return (token[0].isalpha() or token[0] == "_") and token not in _NOT_NAMES
 
 
 def _is_rename(removed: list[str], added: list[str]) -> bool:
@@ -348,6 +355,8 @@ def _is_rename(removed: list[str], added: list[str]) -> bool:
     Lines are compared pairwise after splitting into tokens; every token pair
     must be equal or a pair of identifiers, the mapping old to new must be
     consistent in both directions, and at least one identifier must change.
+    Keywords and builtins (``True``, ``None``, ``and``, ``min``, ``len``) are
+    not identifiers here: swapping one for another changes the logic.
     """
     if not removed or len(removed) != len(added):
         return False
@@ -358,7 +367,7 @@ def _is_rename(removed: list[str], added: list[str]) -> bool:
         if len(old) != len(new):
             return False
         for a, b in zip(old, new, strict=True):
-            is_name = (a[0].isalpha() or a[0] == "_") and (b[0].isalpha() or b[0] == "_")
+            is_name = _is_name(a) and _is_name(b)
             if a != b and not is_name:
                 return False
             if is_name and (forward.setdefault(a, b) != b or backward.setdefault(b, a) != a):

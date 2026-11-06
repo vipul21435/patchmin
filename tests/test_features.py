@@ -160,6 +160,11 @@ def _hunk(path: str, lines: list[str]) -> Hunk:
         ("pkg/x.py", ["-    x = 1", "+    y = 2"], "code"),
         ("pkg/x.py", ["-    f(a, b)", "+    f(b, b)"], "code"),
         ("pkg/x.py", ["-    return a", "+    return 0 - a"], "code"),
+        # Keywords, constants and builtins are logic, not names.
+        ("pkg/x.py", ["-    return True", "+    return False"], "code"),
+        ("pkg/x.py", ["-    return min(a, b)", "+    return max(a, b)"], "code"),
+        ("pkg/x.py", ["-    if a and b:", "+    if a or b:"], "code"),
+        ("pkg/x.py", ["-    x = None", "+    x = items"], "code"),
     ],
 )
 def test_classify_hunk(path, lines, kind):
