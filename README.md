@@ -68,6 +68,8 @@ patchmin --repo PATH --base COMMIT (--fix COMMIT | --patch FILE) --test-cmd CMD
 | `--json`, `--out` | print the result as JSON; write the minimal patch as a diff that `git apply` accepts on `BASE` |
 | `--markdown FILE` | write a Markdown report: counts, one row per hunk, the line verdicts and the minimal patch |
 
+Exit codes: 0 when the minimal patch is found (and confirmed), 2 when a confirming run fails, 1 on an error. A `--repo` that is not a git work tree, a `--base` or `--fix` that names no commit, or a missing `--patch` file stops the run before any test runs, with one `error:` line on stderr; negative counts, `--jobs 0` and a non-positive `--timeout` are rejected by the argument parser. A test program that does not exist makes the run unresolved with the reason `command not found`, and such runs are not cached.
+
 From Python (`uv run python examples/python_api.py`, abridged output below the code):
 
 ```python

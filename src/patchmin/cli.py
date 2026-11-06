@@ -12,7 +12,7 @@ from . import __version__
 from .cache import RunCache
 from .core import minimize_text, pinned_hunks
 from .diff import parse_patch
-from .oracle import WorktreeOracle
+from .oracle import WorktreeOracle, resolve_commit
 from .report import markdown_report
 from .targets import find_targets
 
@@ -25,6 +25,31 @@ def _diff_between(repo: Path, base: str, fix: str, context: int = 3) -> str:
         check=True,
     )
     return proc.stdout
+
+
+def _count(minimum: int):
+    """argparse type: an integer no smaller than ``minimum``."""
+
+    def parse(text: str) -> int:
+        try:
+            value = int(text)
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"not an integer: {text!r}") from None
+        if value < minimum:
+            raise argparse.ArgumentTypeError(f"must be at least {minimum}, got {value}")
+        return value
+
+    return parse
+
+
+def _seconds(text: str) -> float:
+    try:
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not a number: {text!r}") from None
+    if not value > 0:
+        raise argparse.ArgumentTypeError(f"must be more than 0, got {text}")
+    return value
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -56,14 +81,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--context",
-        type=int,
+        type=_count(0),
         default=3,
         metavar="N",
         help="context lines for git diff with --fix (default 3); fewer lines give "
         "smaller hunks, 0 gives one hunk per run of changed lines",
     )
-    p.add_argument("--timeout", type=float, default=600.0, help="seconds per test run")
-    p.add_argument("--reruns", type=int, default=0, help="extra runs to confirm each outcome")
+    p.add_argument("--timeout", type=_seconds, default=600.0, help="seconds per test run")
+    p.add_argument("--reruns", type=_count(0), default=0, help="extra runs to confirm each outcome")
     p.add_argument(
         "--find-targets",
         action="store_true",
@@ -72,11 +97,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--confirm",
-        type=int,
+        type=_count(0),
         default=1,
         help="uncached runs of the final minimal patch to confirm it passes (0 to skip)",
     )
-    p.add_argument("--jobs", type=int, default=1, help="git worktrees to run in parallel")
+    p.add_argument("--jobs", type=_count(1), default=1, help="git worktrees to run in parallel")
     p.add_argument("--cache", type=Path, default=None, help="JSON file for the run cache")
     p.add_argument(
         "--lines", action="store_true", help="also minimise the change lines inside needed hunks"
@@ -89,9 +114,49 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _check_inputs(args: argparse.Namespace, repo: Path) -> str | None:
+    """Return an error message for inputs that cannot work, or None."""
+    if not repo.is_dir():
+        return f"--repo {args.repo} is not a directory"
+    probe = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "--is-inside-work-tree"],
+        capture_output=True,
+        text=True,
+    )
+    if probe.returncode != 0 or probe.stdout.strip() != "true":
+        return f"--repo {args.repo} is not a git work tree"
+    for flag, rev in (("--base", args.base), ("--fix", args.fix)):
+        if rev is None:
+            continue
+        try:
+            resolve_commit(repo, rev)
+        except ValueError:
+            return f"{flag} {rev} does not name a commit in {args.repo}"
+    if args.patch is not None and not args.patch.is_file():
+        return f"--patch {args.patch} is not a file"
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     repo = args.repo.resolve()
+    problem = _check_inputs(args, repo)
+    if problem is not None:
+        print(f"error: {problem}", file=sys.stderr)
+        return 1
+    try:
+        return _run(args, repo)
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or "").strip().splitlines()
+        why = detail[-1] if detail else f"exit code {exc.returncode}"
+        print(f"error: {' '.join(map(str, exc.cmd))} failed: {why}", file=sys.stderr)
+        return 1
+    except OSError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+
+def _run(args: argparse.Namespace, repo: Path) -> int:
     if args.patch is not None:
         patch_text = args.patch.read_text()
     else:
@@ -148,16 +213,20 @@ def main(argv: list[str] | None = None) -> int:
         if result.line_verdicts:
             kept = sum(1 for lv in result.line_verdicts if lv.needed)
             print(f"{kept} of {len(result.line_verdicts)} change lines needed")
-        searched = len(result.verdicts) - len(result.pinned)
-        pinned = f", {len(result.pinned)} pinned" if result.pinned else ""
         timeouts = result.unresolved.get("timeout", 0)
         unapplied = result.unresolved.get("apply", 0)
-        print(
-            f"{len(result.needed)} of {searched} hunks needed{pinned}; "
+        runs = (
             f"{result.runs} test runs ({result.cached_hits} cache hits, "
             f"{result.flaky_runs} flaky, {timeouts} timed out, {unapplied} did not apply) "
             f"in {result.seconds:.1f}s"
         )
+        if result.error:
+            # No search ran, so there are no hunk counts to report.
+            print(runs)
+        else:
+            searched = len(result.verdicts) - len(result.pinned)
+            pinned = f", {len(result.pinned)} pinned" if result.pinned else ""
+            print(f"{len(result.needed)} of {searched} hunks needed{pinned}; {runs}")
         if result.confirm_outcomes:
             verdict = "confirmed" if result.confirmed else "NOT confirmed"
             print(f"minimal patch {verdict}: {', '.join(result.confirm_outcomes)}")
