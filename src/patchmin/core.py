@@ -121,7 +121,7 @@ def pinned_hunks(patch: Patch, patterns: list[str]) -> set[int]:
     """Indices of the hunks whose path matches one of ``patterns``."""
     if not patterns:
         return set()
-    return {h.index for h in patch.hunks if matches_any(h.new_path or h.old_path, patterns)}
+    return {h.index for h in patch.hunks if matches_any(h.path, patterns)}
 
 
 class _Search:

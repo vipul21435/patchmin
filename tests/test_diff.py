@@ -1,6 +1,6 @@
 import subprocess
 
-from patchmin.diff import parse_patch, render_patch
+from patchmin.diff import classify_hunk, parse_patch, render_patch
 
 
 def _diff(repo, base, fix):
@@ -69,3 +69,17 @@ def test_hunk_with_lines_turns_dropped_removals_into_context():
     sub = hunk_with_lines(h, {3, 4})
     assert sub.lines == [" a", " b", "-c", "+C", " d"]
     assert (sub.old_count, sub.new_count) == (4, 4)
+
+
+def test_deleted_files_are_labelled_by_their_old_path():
+    from patchmin.core import pinned_hunks
+
+    text = (
+        "--- a/tests/test_old.py\n+++ /dev/null\n@@ -1,2 +0,0 @@\n-def test_x():\n-    pass\n"
+        "--- a/NOTES.md\n+++ /dev/null\n@@ -1 +0,0 @@\n-Some notes.\n"
+    )
+    patch = parse_patch(text)
+    old_test, notes = patch.hunks
+    assert old_test.label() == "tests/test_old.py:1" and notes.label() == "NOTES.md:1"
+    assert classify_hunk(old_test) == "test" and classify_hunk(notes) == "docs"
+    assert pinned_hunks(patch, ["tests/*"]) == {0}

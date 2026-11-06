@@ -44,9 +44,15 @@ class Hunk:
         """Change in line count when this hunk is applied."""
         return self.added - self.removed
 
+    @property
+    def path(self) -> str:
+        """The file the hunk changes: the new path, or the old one for a
+        deleted file (whose new path is ``/dev/null``)."""
+        return self.old_path if self.new_path == "/dev/null" else self.new_path
+
     def label(self) -> str:
         """``path:old_start``, as printed in the report."""
-        return f"{self.new_path}:{self.old_start}"
+        return f"{self.path}:{self.old_start}"
 
 
 _EXTENDED = (
@@ -413,7 +419,7 @@ def classify_hunk(hunk: Hunk) -> str:
     token except for identifiers that map one to one (old name to new name);
     anything else is ``code``.
     """
-    path = hunk.new_path or hunk.old_path
+    path = hunk.path
     if path.endswith(_DOC_SUFFIXES) or path.startswith(("docs/", "doc/")):
         return "docs"
     if _is_test_path(path):
