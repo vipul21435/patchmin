@@ -140,9 +140,9 @@ def test_cli_find_targets_when_nothing_changes(pytest_repo, capsys):
         "--test-cmd", fx["test_cmd"], "--pin", "*.md", "--pin", "tests/*", "--pin", "lib.py",
         "--find-targets",
     ])
-    out = capsys.readouterr().out
+    err = capsys.readouterr().err
     assert code == 1
-    assert out.startswith("error: no test fails before the fix and passes after")
+    assert err.startswith("error: no test fails before the fix and passes after")
 
 
 def test_cli_warns_about_tests_the_fix_breaks(pytest_repo, capsys):

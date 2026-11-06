@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -148,6 +149,13 @@ def _check_inputs(args: argparse.Namespace, repo: Path) -> str | None:
             return f"{flag} {rev} does not name a commit in {args.repo}"
     if args.patch is not None and not args.patch.is_file():
         return f"--patch {args.patch} is not a file"
+    for flag, cmd in (("--test-cmd", args.test_cmd), ("--rest-cmd", args.rest_cmd)):
+        if cmd is None:
+            continue
+        try:
+            shlex.split(cmd)
+        except ValueError as exc:
+            return f"{flag} cannot be split into words: {exc}"
     return None
 
 
@@ -182,7 +190,11 @@ def _run(args: argparse.Namespace, repo: Path) -> int:
     zero_context = any(
         not any(ln.startswith(" ") for ln in h.lines) for h in parse_patch(patch_text).hunks
     )
-    cache = RunCache(args.cache)
+    try:
+        cache = RunCache(args.cache)
+    except (ValueError, UnicodeDecodeError):
+        print(f"error: --cache {args.cache} is not a JSON cache", file=sys.stderr)
+        return 1
     with WorktreeOracle(
         repo,
         args.base,
@@ -200,7 +212,8 @@ def _run(args: argparse.Namespace, repo: Path) -> int:
             patch = parse_patch(patch_text)
             report = find_targets(patch, pinned_hunks(patch, args.pin), oracle)
             if report.error or not report.targets:
-                print(f"error: {report.error or 'no test fails before the fix and passes after'}")
+                why = report.error or "no test fails before the fix and passes after"
+                print(f"error: {why}", file=sys.stderr)
                 return 1
             oracle.targets = args.target + report.targets
             if not args.json:
@@ -218,7 +231,7 @@ def _run(args: argparse.Namespace, repo: Path) -> int:
         print(json.dumps(data, indent=2))
     else:
         if result.error:
-            print(f"error: {result.error}")
+            print(f"error: {result.error}", file=sys.stderr)
         for v in result.verdicts:
             line = (
                 f"{v.status:<10}  hunk {v.index:<3} {v.kind:<10} {v.label:<32} "

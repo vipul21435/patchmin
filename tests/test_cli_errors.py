@@ -56,11 +56,11 @@ def test_out_of_range_numbers_are_rejected(fixture_repo, capsys, flag, value):
 def test_missing_program_prints_no_hunk_counts(fixture_repo, capsys):
     code = main(_args(fixture_repo, **{"--test-cmd": "patchmin-no-such-program"}))
     assert code == 1
-    out = capsys.readouterr().out
-    assert "error: full patch does not make the target tests pass" in out
-    assert "command not found" in out
-    assert "hunks needed" not in out
-    assert "test runs" in out
+    captured = capsys.readouterr()
+    assert captured.err.startswith("error: full patch does not make the target tests pass")
+    assert "command not found" in captured.err
+    assert "hunks needed" not in captured.out
+    assert "test runs" in captured.out
 
 
 def test_unwritable_output_is_an_error_line(fixture_repo, capsys):
@@ -82,3 +82,25 @@ def test_failing_git_command_is_an_error_line(fixture_repo, capsys, monkeypatch)
     monkeypatch.setattr(cli, "_diff_between", broken)
     assert main(_args(fixture_repo, **{"--timeout": "30"})) == 1
     assert capsys.readouterr().err == "error: git diff failed: fatal: bad object\n"
+
+
+@pytest.mark.parametrize(
+    ("over", "message"),
+    [
+        ({"--test-cmd": 'pytest -q "unclosed'}, "--test-cmd cannot be split"),
+        ({"--rest-cmd": "pytest 'unclosed"}, "--rest-cmd cannot be split"),
+    ],
+)
+def test_unbalanced_quotes_give_one_error_line(fixture_repo, capsys, over, message):
+    assert main(_args(fixture_repo, **over)) == 1
+    err = capsys.readouterr().err
+    assert err.startswith(f"error: {message}")
+    assert err.count("\n") == 1
+
+
+def test_cache_file_that_is_not_json(fixture_repo, tmp_path, capsys):
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not json")
+    assert main(_args(fixture_repo, **{"--cache": str(bad)})) == 1
+    err = capsys.readouterr().err
+    assert err == f"error: --cache {bad} is not a JSON cache\n"

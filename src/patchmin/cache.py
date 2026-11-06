@@ -21,7 +21,8 @@ def content_key(*parts: str) -> str:
 class RunCache:
     """Maps a content key to a stored outcome dictionary.
 
-    ``path=None`` keeps everything in memory.
+    ``path=None`` keeps everything in memory. A ``ValueError`` is raised
+    when ``path`` exists but does not hold a JSON object.
     """
 
     def __init__(self, path: Path | None = None) -> None:
@@ -30,7 +31,10 @@ class RunCache:
         self.hits = 0
         self.misses = 0
         if path is not None and path.exists():
-            self.data = json.loads(path.read_text())
+            data = json.loads(path.read_text())
+            if not isinstance(data, dict):
+                raise ValueError(f"{path} does not hold a JSON object")
+            self.data = data
 
     def peek(self, key: str) -> dict | None:
         """The stored value for ``key``, or None; counts nothing."""
