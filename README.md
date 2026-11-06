@@ -210,6 +210,8 @@ Data: the repositories were cloned from the source links on https://pypi.org/pro
 - [reporewind](https://github.com/vipul21435/reporewind): resolve Python fix commits into source and test patches.
 - [taskledger](https://github.com/vipul21435/taskledger): schema validation and lint rules for benchmark-task bundles.
 - [graderguard](https://github.com/vipul21435/graderguard): audit graders for reward hacking and flakiness.
+- [patchsim](https://github.com/vipul21435/patchsim): how far textual similarity to the gold patch goes as a proxy for correctness, checked against test outcomes.
+- [awesome-coding-agent-evals](https://github.com/vipul21435/awesome-coding-agent-evals): a curated list of benchmarks, harnesses, datasets and papers for coding agents, each checked at its source.
 
 ## Licence
 
