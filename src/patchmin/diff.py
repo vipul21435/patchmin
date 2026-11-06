@@ -49,14 +49,38 @@ class Hunk:
         return f"{self.new_path}:{self.old_start}"
 
 
+_EXTENDED = (
+    "old mode ", "new mode ", "deleted file mode ", "new file mode ", "similarity index ",
+    "dissimilarity index ", "rename from ", "rename to ", "copy from ", "copy to ", "index ",
+    "Binary files ", "GIT binary patch",
+)
+_MODE = ("old mode ", "new mode ")
+
+
 @dataclass
 class FilePatch:
-    """All hunks of one file plus the header lines that precede them."""
+    """All hunks of one file plus the header lines that precede them.
+
+    A file entry with no hunks (a new or deleted empty file, a mode change,
+    a pure rename) has only its ``diff --git`` header.
+    """
 
     old_path: str
     new_path: str
     header: list[str] = field(default_factory=list)
     hunks: list[Hunk] = field(default_factory=list)
+
+    @property
+    def header_only(self) -> bool:
+        """True for an entry with no hunks."""
+        return not self.hunks
+
+    def mode_header(self) -> list[str]:
+        """The ``diff --git`` line and mode lines, or ``[]`` when the mode
+        does not change. Applied on its own, it changes only the mode."""
+        modes = [ln for ln in self.header if ln.startswith(_MODE)]
+        first = next((ln for ln in self.header if ln.startswith("diff --git ")), None)
+        return [first, *modes] if modes and first is not None else []
 
 
 @dataclass
@@ -69,6 +93,23 @@ class Patch:
     def hunks(self) -> list[Hunk]:
         """Every hunk of every file, in patch order."""
         return [h for f in self.files for h in f.hunks]
+
+    def unsupported(self) -> str | None:
+        """Why the patch cannot be searched, or None.
+
+        A rename or copy travels with the hunks of its file, so dropping a
+        hunk would also drop the rename; a binary change cannot be split.
+        Both stop the search rather than give a wrong verdict.
+        """
+        for fp in self.files:
+            if any(ln.startswith(("rename from ", "copy from ")) for ln in fp.header):
+                return (
+                    f"the patch renames or copies {fp.old_path}; make it with "
+                    "git diff --no-renames"
+                )
+            if any(ln.startswith(("Binary files ", "GIT binary patch")) for ln in fp.header):
+                return f"the patch has a binary change to {fp.new_path}, which is not supported"
+        return None
 
 
 def decode_patch(data: bytes) -> str:
@@ -88,6 +129,16 @@ def _strip_prefix(path: str) -> str:
     return path
 
 
+def _git_paths(line: str) -> tuple[str, str]:
+    """Old and new path from a ``diff --git a/x b/y`` line."""
+    rest = line[len("diff --git ") :]
+    if rest.startswith("a/") and " b/" in rest:
+        old, new = rest[2:].split(" b/", 1)
+        return old, new
+    parts = rest.split(" ", 1)
+    return parts[0], parts[-1]
+
+
 def parse_patch(text: str) -> Patch:
     """Parse a unified diff into a Patch.
 
@@ -96,13 +147,34 @@ def parse_patch(text: str) -> Patch:
     followed by a ``+++ `` line; a hunk takes exactly the lines its ``@@``
     header counts (plus ``\\ No newline`` markers), so text after it, such
     as a mail signature or the next file's header, is never read as part of
-    the hunk. Lines keep a trailing ``\\r``; read the diff with
-    :func:`decode_patch` so that bytes that are not UTF-8 survive.
+    the hunk. A ``diff --git`` entry with no ``---``/``+++`` lines (a new
+    or deleted empty file, a mode change, a pure rename, a binary change)
+    becomes a FilePatch with no hunks. Lines keep a trailing ``\\r``; read
+    the diff with :func:`decode_patch` so that bytes that are not UTF-8
+    survive.
     """
     patch = Patch()
     current: FilePatch | None = None
     index = 0
     pending_header: list[str] = []
+    # The extended header of the latest diff --git line, until a ---/+++
+    # pair claims it; None once claimed. ``open_git`` is False after the
+    # first line that is not an extended header line.
+    git_header: list[str] | None = None
+    open_git = False
+
+    def close_git() -> None:
+        nonlocal git_header
+        if git_header is not None and len(git_header) > 1:
+            old, new = _git_paths(git_header[0])
+            for ln in git_header[1:]:
+                if ln.startswith(("rename from ", "copy from ")):
+                    old = ln.split(" ", 2)[2]
+                elif ln.startswith(("rename to ", "copy to ")):
+                    new = ln.split(" ", 2)[2]
+            patch.files.append(FilePatch(old, new, list(git_header)))
+        git_header = None
+
     # Split on "\n" only: str.splitlines also splits on "\r", form feeds,
     # U+2028 and other characters that can sit inside a line of a file.
     lines = text.split("\n")
@@ -113,12 +185,15 @@ def parse_patch(text: str) -> Patch:
         raw = lines[i]
         i += 1
         if raw.startswith("diff --git "):
+            close_git()
             current = None
             pending_header = [raw]
+            git_header, open_git = [raw], True
             continue
         if raw.startswith("--- ") and i < len(lines) and lines[i].startswith("+++ "):
             plus = lines[i]
             i += 1
+            git_header, open_git = None, False
             current = FilePatch(
                 old_path=_strip_prefix(raw[4:]),
                 new_path=_strip_prefix(plus[4:]),
@@ -127,6 +202,11 @@ def parse_patch(text: str) -> Patch:
             patch.files.append(current)
             pending_header = []
             continue
+        if open_git and git_header is not None and raw.startswith(_EXTENDED):
+            git_header.append(raw)
+            pending_header.append(raw)
+            continue
+        open_git = False
         m = _HUNK_RE.match(raw)
         if m is None or current is None:
             pending_header.append(raw)
@@ -166,6 +246,7 @@ def parse_patch(text: str) -> Patch:
             else:
                 break
             i += 1
+    close_git()
     return patch
 
 
@@ -173,12 +254,18 @@ def render_patch(patch: Patch, keep: set[int] | None = None) -> str:
     """Render the patch keeping only hunks whose ``index`` is in ``keep``.
 
     ``keep=None`` renders everything. New-side line numbers are recomputed so
-    that the subset applies cleanly with ``git apply``.
+    that the subset applies cleanly with ``git apply``. File entries with no
+    hunks, and the mode change of a file whose hunks are all dropped, are
+    rendered whatever ``keep`` says: they are part of every trial.
     """
     out: list[str] = []
     for fp in patch.files:
+        if fp.header_only:
+            out.extend(fp.header)
+            continue
         chosen = [h for h in fp.hunks if keep is None or h.index in keep]
         if not chosen:
+            out.extend(fp.mode_header())
             continue
         out.extend(fp.header)
         shift = 0

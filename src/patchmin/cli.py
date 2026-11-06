@@ -20,11 +20,13 @@ from .targets import find_targets
 
 def _diff_between(repo: Path, base: str, fix: str, context: int = 3) -> str:
     # Fix the output format whatever the user's git config says: no external
-    # diff or textconv, and a/ and b/ prefixes for git apply -p1.
+    # diff or textconv, and a/ and b/ prefixes for git apply -p1. No rename
+    # detection: a renamed file is a deletion plus an addition, whose hunks
+    # are tested like any other instead of riding on one hunk.
     proc = subprocess.run(
         [
             "git", "-C", str(repo), "diff", "--no-color", "--no-ext-diff", "--no-textconv",
-            "--src-prefix=a/", "--dst-prefix=b/", f"-U{context}", base, fix,
+            "--src-prefix=a/", "--dst-prefix=b/", "--no-renames", f"-U{context}", base, fix,
         ],
         capture_output=True,
         check=True,

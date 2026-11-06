@@ -206,6 +206,9 @@ def minimize_patch(
 
     trace = DdminTrace()
     free = [h.index for h in hunks if h.index not in pinned]
+    problem = patch.unsupported()
+    if problem is not None:
+        return finish([], trace, problem)
     if not hunks:
         return finish([], trace, "patch has no hunks")
     if not free:
