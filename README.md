@@ -20,6 +20,8 @@ uv pip install -e ".[dev]"
 uv run pytest -q
 ```
 
+On 2026-11-06 `uv run pytest -q --cov=patchmin` ran 91 tests in 19 s, offline, with 97 % line coverage of `src/patchmin` (the tests build their own git repositories in temporary folders).
+
 ## Quickstart
 
 `examples/run_fixture.py` builds a two-commit git repository in a temporary folder: a small `calc.py` with a wrong `add`, then a fix commit of four hunks (a module docstring edit, the real fix together with a comment edit, a function docstring edit, a rewrite of `neg`). It then runs the command line tool on it. Output of `uv run python examples/run_fixture.py` on 2026-11-06:
