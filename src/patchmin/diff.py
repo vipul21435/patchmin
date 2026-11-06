@@ -211,13 +211,16 @@ def _is_test_path(path: str) -> bool:
 
 def classify_hunk(hunk: Hunk) -> str:
     """A rough label for what a hunk changes: ``docs``, ``test``, ``whitespace``,
-    ``comment`` or ``code``.
+    ``comment``, ``rename`` or ``code``.
 
     The label is a hint for reading the report and plays no part in the
     search. ``docs`` is a hunk in a documentation file; ``test`` a hunk in a
     test file; ``whitespace`` a hunk whose added and removed lines are equal
     once whitespace is removed; ``comment`` a hunk whose changed lines are
-    all ``#`` comments or docstring fences; anything else is ``code``.
+    all ``#`` comments or docstring fences, or sit inside a docstring;
+    ``rename`` a hunk whose removed and added lines are the same token for
+    token except for identifiers that map one to one (old name to new name);
+    anything else is ``code``.
     """
     path = hunk.new_path or hunk.old_path
     if path.endswith(_DOC_SUFFIXES) or path.startswith(("docs/", "doc/")):
@@ -235,7 +238,36 @@ def classify_hunk(hunk: Hunk) -> str:
         return "comment"
     if changed and _docstring_only(hunk):
         return "comment"
+    if _is_rename(removed, added):
+        return "rename"
     return "code"
+
+
+_TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|\d+|\S")
+
+
+def _is_rename(removed: list[str], added: list[str]) -> bool:
+    """True when ``added`` is ``removed`` with identifiers renamed one to one.
+
+    Lines are compared pairwise after splitting into tokens; every token pair
+    must be equal or a pair of identifiers, the mapping old to new must be
+    consistent in both directions, and at least one identifier must change.
+    """
+    if not removed or len(removed) != len(added):
+        return False
+    forward: dict[str, str] = {}
+    backward: dict[str, str] = {}
+    for old_line, new_line in zip(removed, added, strict=True):
+        old, new = _TOKEN.findall(old_line), _TOKEN.findall(new_line)
+        if len(old) != len(new):
+            return False
+        for a, b in zip(old, new, strict=True):
+            is_name = (a[0].isalpha() or a[0] == "_") and (b[0].isalpha() or b[0] == "_")
+            if a != b and not is_name:
+                return False
+            if is_name and (forward.setdefault(a, b) != b or backward.setdefault(b, a) != a):
+                return False
+    return any(a != b for a, b in forward.items())
 
 
 def _fences(text: str) -> int:
