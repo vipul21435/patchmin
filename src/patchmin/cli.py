@@ -10,8 +10,10 @@ from pathlib import Path
 
 from . import __version__
 from .cache import RunCache
-from .core import minimize_text
+from .core import minimize_text, pinned_hunks
+from .diff import parse_patch
 from .oracle import WorktreeOracle
+from .targets import find_targets
 
 
 def _diff_between(repo: Path, base: str, fix: str) -> str:
@@ -54,6 +56,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--timeout", type=float, default=600.0, help="seconds per test run")
     p.add_argument("--reruns", type=int, default=0, help="extra runs to confirm each outcome")
     p.add_argument(
+        "--find-targets",
+        action="store_true",
+        help="pytest only: run the tests before and after the fix and use the "
+        "fail-to-pass tests as targets (needs --pin for the test files)",
+    )
+    p.add_argument(
         "--confirm",
         type=int,
         default=1,
@@ -88,11 +96,26 @@ def main(argv: list[str] | None = None) -> int:
         rest_cmd=args.rest_cmd,
         jobs=args.jobs,
     ) as oracle:
+        if args.find_targets:
+            patch = parse_patch(patch_text)
+            report = find_targets(patch, pinned_hunks(patch, args.pin), oracle)
+            if report.error or not report.targets:
+                print(f"error: {report.error or 'no test fails before the fix and passes after'}")
+                return 1
+            oracle.targets = args.target + report.targets
+            if not args.json:
+                print(f"targets ({len(report.targets)} fail before the fix, pass after):")
+                for t in report.targets:
+                    print(f"  {t}")
+                if report.broken:
+                    print(f"warning: {len(report.broken)} tests pass before the fix and fail after")
         result = minimize_text(
             patch_text, oracle, lines=args.lines, pin=args.pin, confirm=args.confirm
         )
     if args.json:
-        print(json.dumps(result.to_dict(), indent=2))
+        data = result.to_dict()
+        data["targets"] = oracle.targets
+        print(json.dumps(data, indent=2))
     else:
         if result.error:
             print(f"error: {result.error}")

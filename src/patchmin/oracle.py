@@ -216,6 +216,26 @@ class WorktreeOracle:
             self.open()
         return [self._run_once(patch_text, self._worktrees[0]) for _ in range(times)]
 
+    def execute(self, patch_text: str, extra_args: list[str]) -> RunResult:
+        """Apply ``patch_text`` and run the test command with ``extra_args``
+        in place of the targets; no rest command, no cache, no reruns."""
+        if not self._worktrees:
+            self.open()
+        wt = self._worktrees[0]
+        with self._lock:
+            self.runs += 1
+        self._reset(wt)
+        t0 = time.monotonic()
+        if not self._apply(wt, patch_text):
+            return RunResult(Outcome.UNRESOLVED, time.monotonic() - t0, None, reason="apply")
+        code, out = run_command(shlex.split(self.test_cmd) + extra_args, wt, self.timeout)
+        seconds = time.monotonic() - t0
+        if code is None:
+            return RunResult(Outcome.UNRESOLVED, seconds, None, stdout_tail=out[-2000:],
+                             reason="timeout")
+        outcome = Outcome.PASS if code == 0 else Outcome.FAIL
+        return RunResult(outcome, seconds, code, stdout_tail=out[-2000:])
+
     def run_many(self, patch_texts: list[str]) -> list[RunResult]:
         """Run several subsets, up to ``jobs`` at a time, one worktree each.
 
