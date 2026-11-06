@@ -238,19 +238,49 @@ def classify_hunk(hunk: Hunk) -> str:
     return "code"
 
 
+def _fences(text: str) -> int:
+    return text.count('"""') + text.count("'''")
+
+
+def _starts_inside_docstring(hunk: Hunk) -> bool:
+    """Guess whether the hunk's first line sits inside a docstring.
+
+    The hunk does not show what came before it, so the first line with an
+    odd number of triple quotes decides: a fence followed by text opens a
+    docstring, text followed by a fence closes one, and a bare fence opens
+    one when it is the hunk's first line or the last non-blank line before
+    it ends with a colon (a def or class header). A hunk with no fence is
+    taken to start outside, so a hunk wholly inside a long docstring is
+    labelled ``code``.
+    """
+    previous = ""
+    for i, ln in enumerate(hunk.lines):
+        text = ln[1:].strip()
+        if _fences(text) % 2 == 1:
+            fence = text[:3] if text[:3] in ('"""', "'''") else None
+            if text in ('"""', "'''"):
+                if not previous:
+                    # Only blank lines before it: a closing fence after the
+                    # usual blank line, unless it is the very first line.
+                    return i > 0
+                return not previous.endswith(":")
+            return fence is None
+        if text:
+            previous = text
+    return False
+
+
 def _docstring_only(hunk: Hunk) -> bool:
     """True when every changed line of ``hunk`` sits inside a docstring.
 
-    Tracks triple-quote fences from the top of the hunk; a changed line is
-    inside a docstring when an odd number of fences precede it or it is a
-    fence itself. Context before the hunk is unknown, so a hunk that starts
-    inside a docstring is not recognised.
+    Tracks triple-quote fences through the hunk, starting from the guess of
+    ``_starts_inside_docstring``; a changed line counts when it is inside a
+    docstring or is a fence line itself.
     """
-    inside = False
+    inside = _starts_inside_docstring(hunk)
     for ln in hunk.lines:
         tag, text = ln[:1], ln[1:]
-        fences = text.count('"""') + text.count("'''")
-        is_fence = fences % 2 == 1
+        is_fence = _fences(text) % 2 == 1
         if tag in ("+", "-") and text.strip() and not (inside or is_fence):
             return False
         if is_fence:

@@ -131,10 +131,16 @@ def _hunk(path: str, lines: list[str]) -> Hunk:
         ("pkg/x_test.py", ["-a", "+b"], "test"),
         ("pkg/x.py", ["-x = 1", "+x  =  1"], "whitespace"),
         ("pkg/x.py", ["-# old", "+# new"], "comment"),
-        ("pkg/x.py", [' """Doc."""', '-old words', '+new words', ' """'], "code"),
+        ("pkg/x.py", [" def f():", '     """Doc."""', "-    return 1", "+    return 2"], "code"),
         ("pkg/x.py", [' """', '-old words', '+new words', ' """'], "comment"),
         ("pkg/x.py", ['-    """Old."""', '+    """New."""'], "comment"),
         ("pkg/x.py", ["-x = 1", "+x = 2"], "code"),
+        # Starts inside a docstring: the bare fence closes it, the change is code.
+        ("pkg/x.py", ["     [[1, 2]]", '     """', "-    yield x", "+    yield y"], "code"),
+        ("pkg/x.py", ["     text.", '     """', "     if n:", "-        a", "+        b"], "code"),
+        ("pkg/x.py", ["-    more text", "+    other text", '     """'], "comment"),
+        ("pkg/x.py", [" ", '     """', "     if n:", "-        a", "+        b"], "code"),
+        ("pkg/x.py", [" def f():", '     """', "-    old", "+    new", '     """'], "comment"),
         ("pkg/x.py", ["-# note", "+x = 2"], "code"),
     ],
 )
