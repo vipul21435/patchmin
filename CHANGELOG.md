@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- `--fix` diffs with `--no-ext-diff`, `--no-textconv`, `a/` and `b/`
+  prefixes and `--no-renames`, so `diff.noprefix`, `diff.external` and
+  rename detection in the user's git config no longer break the run or
+  make a rename ride on an unrelated hunk.
+- File entries with no hunks (new or deleted empty files, mode changes) are
+  kept in every trial instead of being dropped; a `--patch` file with a
+  rename, a copy or a binary change stops with an error.
+- A deleted file is labelled and classified by its old path, not
+  `/dev/null`, and `--pin` patterns match it.
+- Usage errors exit with 1, so 2 means only a failed confirmation.
 - Ignored `__pycache__` directories and `.pyc` files are deleted between
   trials and test commands run with `PYTHONDONTWRITEBYTECODE=1`; before,
   a same-size edit could run the previous trial's bytecode and give a
