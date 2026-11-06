@@ -1,0 +1,143 @@
+{
+  "case": {
+    "name": "tabulate-asciidoc-whitespace",
+    "commit": "3aa568c66987",
+    "subject": "fix #408 - remove trailing whitespace from asciidoc output",
+    "targets": [
+      "test/test_output.py::test_asciidoc",
+      "test/test_output.py::test_asciidoc_headerless",
+      "test/test_regression.py::test_asciidoc_without_trailing_whitespace"
+    ]
+  },
+  "source": "https://pypi.org/project/tabulate/",
+  "jobs": 1,
+  "load_average": 8.8,
+  "wall_seconds": 46.2,
+  "result": {
+    "needed": [
+      2
+    ],
+    "pinned": [
+      3,
+      4,
+      5
+    ],
+    "hunks": [
+      {
+        "index": 0,
+        "label": "README.md:502",
+        "needed": false,
+        "added": 4,
+        "removed": 4,
+        "heading": "format:",
+        "kind": "docs",
+        "pinned": false,
+        "status": "not needed"
+      },
+      {
+        "index": 1,
+        "label": "tabulate/__init__.py:278",
+        "needed": false,
+        "added": 4,
+        "removed": 2,
+        "heading": "def _asciidoc_row(is_header, *args):",
+        "kind": "code",
+        "pinned": false,
+        "status": "not needed"
+      },
+      {
+        "index": 2,
+        "label": "tabulate/__init__.py:293",
+        "needed": true,
+        "added": 3,
+        "removed": 2,
+        "heading": "def _asciidoc_row(is_header, *args):",
+        "kind": "code",
+        "pinned": false,
+        "status": "needed"
+      },
+      {
+        "index": 3,
+        "label": "test/test_output.py:2088",
+        "needed": true,
+        "added": 3,
+        "removed": 3,
+        "heading": "def test_asciidoc():",
+        "kind": "test",
+        "pinned": true,
+        "status": "pinned"
+      },
+      {
+        "index": 4,
+        "label": "test/test_output.py:2104",
+        "needed": true,
+        "added": 2,
+        "removed": 2,
+        "heading": "def test_asciidoc_headerless():",
+        "kind": "test",
+        "pinned": true,
+        "status": "pinned"
+      },
+      {
+        "index": 5,
+        "label": "test/test_regression.py:580",
+        "needed": true,
+        "added": 11,
+        "removed": 0,
+        "heading": "def test_mixed_bool_strings_and_numeric_strings():",
+        "kind": "test",
+        "pinned": true,
+        "status": "pinned"
+      }
+    ],
+    "runs": 42,
+    "cached_hits": 6,
+    "flaky_runs": 0,
+    "unresolved": {},
+    "confirm": [
+      "pass",
+      "pass"
+    ],
+    "confirmed": true,
+    "seconds": 45.887,
+    "tests": 24,
+    "lines": [
+      {
+        "hunk": 2,
+        "position": 3,
+        "text": "-            return make_header_line(True, colwidths, colaligns) + \"\\n\" + data_line",
+        "needed": true
+      },
+      {
+        "hunk": 2,
+        "position": 4,
+        "text": "+            line = make_header_line(True, colwidths, colaligns) + \"\\n\" + data_line",
+        "needed": true
+      },
+      {
+        "hunk": 2,
+        "position": 5,
+        "text": "+            return line.rstrip()",
+        "needed": true
+      },
+      {
+        "hunk": 2,
+        "position": 7,
+        "text": "-            return data_line",
+        "needed": true
+      },
+      {
+        "hunk": 2,
+        "position": 8,
+        "text": "+            return data_line.rstrip()",
+        "needed": true
+      }
+    ],
+    "error": null,
+    "targets": [
+      "test/test_output.py::test_asciidoc",
+      "test/test_output.py::test_asciidoc_headerless",
+      "test/test_regression.py::test_asciidoc_without_trailing_whitespace"
+    ]
+  }
+}

@@ -1,0 +1,112 @@
+{
+  "case": {
+    "name": "attrs-frozen-error-message",
+    "commit": "ce89f5d11feb",
+    "subject": "Fix message passing in frozen errors",
+    "targets": [
+      "tests/test_functional.py::TestFunctional::test_frozen_instance[Frozen]",
+      "tests/test_functional.py::TestFunctional::test_frozen_instance[FrozenToo]"
+    ]
+  },
+  "source": "https://pypi.org/project/attrs/",
+  "jobs": 4,
+  "load_average": 5.1,
+  "wall_seconds": 76.4,
+  "result": {
+    "needed": [
+      1
+    ],
+    "pinned": [
+      2
+    ],
+    "hunks": [
+      {
+        "index": 0,
+        "label": "src/attr/exceptions.py:2",
+        "needed": false,
+        "added": 0,
+        "removed": 2,
+        "heading": "",
+        "kind": "code",
+        "pinned": false,
+        "status": "not needed"
+      },
+      {
+        "index": 1,
+        "label": "src/attr/exceptions.py:16",
+        "needed": true,
+        "added": 4,
+        "removed": 2,
+        "heading": "class FrozenError(AttributeError):",
+        "kind": "code",
+        "pinned": false,
+        "status": "needed"
+      },
+      {
+        "index": 2,
+        "label": "tests/test_functional.py:264",
+        "needed": true,
+        "added": 10,
+        "removed": 3,
+        "heading": "class TestFunctional:",
+        "kind": "test",
+        "pinned": true,
+        "status": "pinned"
+      }
+    ],
+    "runs": 58,
+    "cached_hits": 10,
+    "flaky_runs": 0,
+    "unresolved": {},
+    "confirm": [
+      "pass",
+      "pass"
+    ],
+    "confirmed": true,
+    "seconds": 75.886,
+    "tests": 36,
+    "lines": [
+      {
+        "hunk": 1,
+        "position": 3,
+        "text": "-    msg = \"can't set attribute\"",
+        "needed": false
+      },
+      {
+        "hunk": 1,
+        "position": 4,
+        "text": "-    args: ClassVar[tuple[str]] = [msg]",
+        "needed": true
+      },
+      {
+        "hunk": 1,
+        "position": 5,
+        "text": "+    def __init__(self):",
+        "needed": true
+      },
+      {
+        "hunk": 1,
+        "position": 6,
+        "text": "+        msg = \"can't set attribute\"",
+        "needed": true
+      },
+      {
+        "hunk": 1,
+        "position": 7,
+        "text": "+        super().__init__(msg)",
+        "needed": true
+      },
+      {
+        "hunk": 1,
+        "position": 8,
+        "text": "+        self.msg = msg",
+        "needed": false
+      }
+    ],
+    "error": null,
+    "targets": [
+      "tests/test_functional.py::TestFunctional::test_frozen_instance[Frozen]",
+      "tests/test_functional.py::TestFunctional::test_frozen_instance[FrozenToo]"
+    ]
+  }
+}

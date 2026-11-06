@@ -10,7 +10,9 @@
     ]
   },
   "source": "https://pypi.org/project/more-itertools/",
-  "wall_seconds": 204.1,
+  "jobs": 1,
+  "load_average": 6.1,
+  "wall_seconds": 471.2,
   "result": {
     "needed": [
       1,
@@ -113,7 +115,7 @@
         "status": "pinned"
       }
     ],
-    "runs": 90,
+    "runs": 84,
     "cached_hits": 4,
     "flaky_runs": 0,
     "unresolved": {},
@@ -122,8 +124,8 @@
       "pass"
     ],
     "confirmed": true,
-    "seconds": 203.876,
-    "tests": 46,
+    "seconds": 470.881,
+    "tests": 43,
     "lines": [
       {
         "hunk": 1,

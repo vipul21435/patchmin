@@ -1,0 +1,105 @@
+{
+  "case": {
+    "name": "toolz-interpose-empty",
+    "commit": "d2eba0374a45",
+    "subject": "Fix interpose([]) raising StopIteration",
+    "targets": [
+      "toolz/tests/test_itertoolz.py::test_interpose_empty"
+    ]
+  },
+  "source": "https://pypi.org/project/toolz/",
+  "jobs": 1,
+  "load_average": 9.4,
+  "wall_seconds": 37.6,
+  "result": {
+    "needed": [
+      0
+    ],
+    "pinned": [
+      1
+    ],
+    "hunks": [
+      {
+        "index": 0,
+        "label": "toolz/itertoolz.py:522",
+        "needed": true,
+        "added": 6,
+        "removed": 1,
+        "heading": "def interpose(el, seq):",
+        "kind": "code",
+        "pinned": false,
+        "status": "needed"
+      },
+      {
+        "index": 1,
+        "label": "toolz/tests/test_itertoolz.py:255",
+        "needed": true,
+        "added": 4,
+        "removed": 0,
+        "heading": "def test_interpose():",
+        "kind": "test",
+        "pinned": true,
+        "status": "pinned"
+      }
+    ],
+    "runs": 46,
+    "cached_hits": 10,
+    "flaky_runs": 0,
+    "unresolved": {},
+    "confirm": [
+      "pass",
+      "pass"
+    ],
+    "confirmed": true,
+    "seconds": 37.394,
+    "tests": 30,
+    "lines": [
+      {
+        "hunk": 0,
+        "position": 3,
+        "text": "+    >>> list(interpose(\"a\", []))",
+        "needed": false
+      },
+      {
+        "hunk": 0,
+        "position": 4,
+        "text": "+    []",
+        "needed": false
+      },
+      {
+        "hunk": 0,
+        "position": 7,
+        "text": "-    next(inposed)",
+        "needed": true
+      },
+      {
+        "hunk": 0,
+        "position": 8,
+        "text": "+    try:",
+        "needed": true
+      },
+      {
+        "hunk": 0,
+        "position": 9,
+        "text": "+        next(inposed)",
+        "needed": true
+      },
+      {
+        "hunk": 0,
+        "position": 10,
+        "text": "+    except StopIteration:",
+        "needed": true
+      },
+      {
+        "hunk": 0,
+        "position": 11,
+        "text": "+        return iter([])",
+        "needed": true
+      }
+    ],
+    "error": null,
+    "targets": [
+      "toolz/tests/test_itertoolz.py::test_interpose_empty"
+    ]
+  }
+}

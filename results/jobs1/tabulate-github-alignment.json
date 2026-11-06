@@ -1,0 +1,151 @@
+{
+  "case": {
+    "name": "tabulate-github-alignment",
+    "commit": "8014ec66820c",
+    "subject": "Fix alignments in `github` tables",
+    "targets": [
+      "test/test_output.py::test_github",
+      "test/test_output.py::test_github_multiline",
+      "test/test_output.py::test_github_with_colalign",
+      "test/test_output.py::test_simple_headerless_with_sep_line_with_padding_in_tablefmt"
+    ]
+  },
+  "source": "https://pypi.org/project/tabulate/",
+  "jobs": 1,
+  "load_average": 6.9,
+  "wall_seconds": 34.4,
+  "result": {
+    "needed": [
+      2
+    ],
+    "pinned": [
+      3,
+      4,
+      5,
+      6
+    ],
+    "hunks": [
+      {
+        "index": 0,
+        "label": "README.md:233",
+        "needed": false,
+        "added": 2,
+        "removed": 2,
+        "heading": "bacon       0",
+        "kind": "docs",
+        "pinned": false,
+        "status": "not needed"
+      },
+      {
+        "index": 1,
+        "label": "tabulate/__init__.py:522",
+        "needed": false,
+        "added": 0,
+        "removed": 10,
+        "heading": "_table_formats = {",
+        "kind": "code",
+        "pinned": false,
+        "status": "not needed"
+      },
+      {
+        "index": 2,
+        "label": "tabulate/__init__.py:719",
+        "needed": true,
+        "added": 4,
+        "removed": 0,
+        "heading": "_table_formats = {",
+        "kind": "code",
+        "pinned": false,
+        "status": "needed"
+      },
+      {
+        "index": 3,
+        "label": "test/test_output.py:369",
+        "needed": true,
+        "added": 2,
+        "removed": 2,
+        "heading": "def test_simple_headerless_with_sep_line_with_padding_in_tablefmt():",
+        "kind": "test",
+        "pinned": true,
+        "status": "pinned"
+      },
+      {
+        "index": 4,
+        "label": "test/test_output.py:489",
+        "needed": true,
+        "added": 1,
+        "removed": 1,
+        "heading": "def test_github():",
+        "kind": "test",
+        "pinned": true,
+        "status": "pinned"
+      },
+      {
+        "index": 5,
+        "label": "test/test_output.py:506",
+        "needed": true,
+        "added": 1,
+        "removed": 1,
+        "heading": "def test_github_multiline():",
+        "kind": "test",
+        "pinned": true,
+        "status": "pinned"
+      },
+      {
+        "index": 6,
+        "label": "test/test_output.py:515",
+        "needed": true,
+        "added": 39,
+        "removed": 0,
+        "heading": "def test_github_multiline():",
+        "kind": "test",
+        "pinned": true,
+        "status": "pinned"
+      }
+    ],
+    "runs": 20,
+    "cached_hits": 0,
+    "flaky_runs": 0,
+    "unresolved": {},
+    "confirm": [
+      "pass",
+      "pass"
+    ],
+    "confirmed": true,
+    "seconds": 34.105,
+    "tests": 7,
+    "lines": [
+      {
+        "hunk": 2,
+        "position": 3,
+        "text": "+# \"github\" is an alias for \"pipe\": both produce GitHub-flavored Markdown with",
+        "needed": false
+      },
+      {
+        "hunk": 2,
+        "position": 4,
+        "text": "+# alignment colons in the separator row.",
+        "needed": false
+      },
+      {
+        "hunk": 2,
+        "position": 5,
+        "text": "+_table_formats[\"github\"] = _table_formats[\"pipe\"]",
+        "needed": true
+      },
+      {
+        "hunk": 2,
+        "position": 6,
+        "text": "+",
+        "needed": false
+      }
+    ],
+    "error": null,
+    "targets": [
+      "test/test_output.py::test_github",
+      "test/test_output.py::test_github_multiline",
+      "test/test_output.py::test_github_with_colalign",
+      "test/test_output.py::test_simple_headerless_with_sep_line_with_padding_in_tablefmt"
+    ]
+  }
+}
