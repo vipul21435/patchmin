@@ -98,5 +98,6 @@ if __name__ == "__main__":
             "--test-cmd", f'{sys.executable} -c "{CHECK}"',
         ]
         print("$ patchmin --repo <repo> --base <base> --fix <fix> --lines \\")
-        print("      --test-cmd 'python -c ...'")
+        # The interpreter path is shown as "python"; the check is the CHECK string above.
+        print(f"      --test-cmd 'python -c \"{CHECK}\"'")
         sys.exit(main(argv + ["--lines"]))

@@ -28,7 +28,7 @@ On 2026-11-06 `uv run pytest -q --cov=patchmin` ran 91 tests in 19 s, offline, w
 
 ```
 $ patchmin --repo <repo> --base <base> --fix <fix> --lines \
-      --test-cmd 'python -c ...'
+      --test-cmd 'python -c "import calc; assert calc.add(2, 3) == 5 and calc.mul(2, 3) == 6 and calc.neg(4) == -4"'
 not needed  hunk 0   comment    calc.py:1                        +1/-1
 needed      hunk 1   code       calc.py:11                       +2/-2  PAD = [
 not needed  hunk 2   comment    calc.py:25                       +1/-1  PAD2 = [
@@ -38,7 +38,7 @@ needed      hunk 1   line 4   -    return a - b
 not needed  hunk 1   line 5   +    # adds two numbers, now correctly
 needed      hunk 1   line 6   +    return a + b
 2 of 4 change lines needed
-1 of 4 hunks needed; 14 test runs (6 cache hits, 0 flaky, 0 timed out, 0 did not apply) in 0.6s
+1 of 4 hunks needed; 14 test runs (6 cache hits, 0 flaky, 0 timed out, 0 did not apply) in 0.7s
 minimal patch confirmed: pass
 ```
 
