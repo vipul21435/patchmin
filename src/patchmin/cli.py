@@ -101,10 +101,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{kept} of {len(result.line_verdicts)} change lines needed")
         searched = len(result.verdicts) - len(result.pinned)
         pinned = f", {len(result.pinned)} pinned" if result.pinned else ""
+        timeouts = result.unresolved.get("timeout", 0)
+        unapplied = result.unresolved.get("apply", 0)
         print(
             f"{len(result.needed)} of {searched} hunks needed{pinned}; "
             f"{result.runs} test runs ({result.cached_hits} cache hits, "
-            f"{result.flaky_runs} flaky) in {result.seconds:.1f}s"
+            f"{result.flaky_runs} flaky, {timeouts} timed out, {unapplied} did not apply) "
+            f"in {result.seconds:.1f}s"
         )
     if args.out is not None and not result.error:
         args.out.write_text(result.minimal_patch)

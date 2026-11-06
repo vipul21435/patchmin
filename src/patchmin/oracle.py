@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import shlex
+import signal
 import subprocess
 import tempfile
 import threading
@@ -29,6 +31,34 @@ class RunResult:
     cached: bool = False
     flaky: bool = False
     stdout_tail: str = ""
+    reason: str = ""
+    """Why a run is unresolved: ``apply``, ``timeout`` or ``flaky``; empty otherwise."""
+
+
+def run_command(cmd: list[str], cwd: Path, timeout: float) -> tuple[int | None, str]:
+    """Run ``cmd`` in its own process group and return ``(returncode, output)``.
+
+    On timeout the whole group is killed, so test runners that start worker
+    processes do not leave them behind, and the return code is None.
+    """
+    proc = subprocess.Popen(
+        cmd,
+        cwd=cwd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        start_new_session=True,
+    )
+    try:
+        out, _ = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        out, _ = proc.communicate()
+        return None, out or ""
+    return proc.returncode, out or ""
 
 
 def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess:
@@ -128,25 +158,20 @@ class WorktreeOracle:
         self._reset(wt)
         t0 = time.monotonic()
         if not self._apply(wt, patch_text):
-            return RunResult(Outcome.UNRESOLVED, time.monotonic() - t0, None)
+            return RunResult(Outcome.UNRESOLVED, time.monotonic() - t0, None, reason="apply")
         commands = [shlex.split(self.test_cmd) + self.targets]
         if self.rest_cmd:
             commands.append(shlex.split(self.rest_cmd))
         tail = ""
-        returncode = 0
+        returncode: int | None = 0
         for cmd in commands:
-            try:
-                proc = subprocess.run(
-                    cmd,
-                    cwd=wt,
-                    capture_output=True,
-                    text=True,
-                    timeout=self.timeout,
+            returncode, out = run_command(cmd, wt, self.timeout)
+            tail = out[-2000:]
+            if returncode is None:
+                return RunResult(
+                    Outcome.UNRESOLVED, time.monotonic() - t0, None, stdout_tail=tail,
+                    reason="timeout",
                 )
-            except subprocess.TimeoutExpired:
-                return RunResult(Outcome.UNRESOLVED, time.monotonic() - t0, None)
-            tail = (proc.stdout + proc.stderr)[-2000:]
-            returncode = proc.returncode
             if returncode != 0:
                 break
         outcome = Outcome.PASS if returncode == 0 else Outcome.FAIL
@@ -162,9 +187,12 @@ class WorktreeOracle:
             hit = self.cache.get(key)
         if hit is None:
             return None
+        if hit.get("reason") == "timeout" and hit.get("timeout", 0.0) < self.timeout:
+            # Timed out under a shorter limit than the current one: run again.
+            return None
         return RunResult(
             Outcome(hit["outcome"]), hit["seconds"], hit.get("returncode"), cached=True,
-            flaky=hit.get("flaky", False),
+            flaky=hit.get("flaky", False), reason=hit.get("reason", ""),
         )
 
     def run(self, patch_text: str) -> RunResult:
@@ -222,7 +250,7 @@ class WorktreeOracle:
                 if again.outcome is not first.outcome:
                     result = RunResult(
                         Outcome.UNRESOLVED, first.seconds + again.seconds, None, flaky=True,
-                        stdout_tail=again.stdout_tail,
+                        stdout_tail=again.stdout_tail, reason="flaky",
                     )
                     break
         with self._lock:
@@ -233,6 +261,8 @@ class WorktreeOracle:
                     "seconds": result.seconds,
                     "returncode": result.returncode,
                     "flaky": result.flaky,
+                    "reason": result.reason,
+                    "timeout": self.timeout,
                 },
             )
         return result

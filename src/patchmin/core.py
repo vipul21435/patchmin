@@ -17,7 +17,7 @@ from .diff import (
     render_patch,
     with_hunk,
 )
-from .oracle import Outcome, WorktreeOracle
+from .oracle import Outcome, RunResult, WorktreeOracle
 
 
 @dataclass
@@ -59,6 +59,8 @@ class MinimizeResult:
     error: str | None = None
     line_verdicts: list[LineVerdict] = field(default_factory=list)
     pinned: list[int] = field(default_factory=list)
+    unresolved: dict[str, int] = field(default_factory=dict)
+    """Distinct subsets left unresolved, by reason (``apply``, ``timeout``, ``flaky``)."""
 
     def to_dict(self) -> dict:
         return {
@@ -68,6 +70,7 @@ class MinimizeResult:
             "runs": self.runs,
             "cached_hits": self.cached_hits,
             "flaky_runs": self.flaky_runs,
+            "unresolved": self.unresolved,
             "seconds": round(self.seconds, 3),
             "tests": self.trace.tests,
             "lines": [v.__dict__ for v in self.line_verdicts],
@@ -105,19 +108,27 @@ class _Search:
         self.patch = patch
         self.oracle = oracle
         self.pinned = pinned
-        self.flaky = 0
         self.parallel = oracle.jobs > 1
+        self.unresolved: dict[str, set[str]] = {}
+
+    @property
+    def flaky(self) -> int:
+        return len(self.unresolved.get("flaky", ()))
+
+    def counts(self) -> dict[str, int]:
+        return {reason: len(texts) for reason, texts in sorted(self.unresolved.items())}
+
+    def _note(self, text: str, run: RunResult) -> bool:
+        if run.reason:
+            self.unresolved.setdefault(run.reason, set()).add(text)
+        return run.outcome is Outcome.PASS
 
     def passes(self, text: str) -> bool:
-        run = self.oracle.run(text)
-        if run.flaky:
-            self.flaky += 1
-        return run.outcome is Outcome.PASS
+        return self._note(text, self.oracle.run(text))
 
     def passes_many(self, texts: list[str]) -> list[bool]:
         runs = self.oracle.run_many(texts)
-        self.flaky += sum(1 for r in runs if r.flaky)
-        return [r.outcome is Outcome.PASS for r in runs]
+        return [self._note(t, r) for t, r in zip(texts, runs, strict=True)]
 
     def search(self, items: list, render, trace: DdminTrace) -> list:
         """ddmin over ``items``; ``render(subset)`` gives the patch text."""
@@ -161,6 +172,7 @@ def minimize_patch(
             trace=trace,
             error=error,
             pinned=sorted(pinned),
+            unresolved=state.counts(),
         )
 
     trace = DdminTrace()
@@ -215,6 +227,8 @@ def refine_lines(patch: Patch, result: MinimizeResult, oracle: WorktreeOracle) -
     result.runs = oracle.runs
     result.cached_hits = oracle.cache.hits
     result.flaky_runs += state.flaky
+    for reason, n in state.counts().items():
+        result.unresolved[reason] = result.unresolved.get(reason, 0) + n
     result.seconds += time.monotonic() - t0
     return result
 
