@@ -188,6 +188,8 @@ Data: the repositories were cloned from the source links on https://pypi.org/pro
 - With `--jobs` above 1, test runs share the machine: tests that write to fixed paths outside the worktree, bind fixed ports or rely on timing can interfere with each other.
 - Wall times in this README were measured on a laptop that was running other work at the same time; repeats of the same command differ by tens of percent (see the results section).
 - Binary patches, renames and mode changes are not handled. Process-group killing on timeout assumes a POSIX system.
+- The cache key covers the base commit id, the commands, the targets and the patch text, not the environment: untracked files in the repository, the interpreter and the installed packages are not part of it. Delete the `--cache` file after changing any of them. The repository path is not part of the key either; the same commit id names the same tracked content in any clone.
+- In the line pass, a hunk that deletes a whole file is all or nothing; its lines are reported as needed without a search.
 - Flaky detection only sees disagreement within the reruns requested; with `--reruns 0` a flaky test can mislead the search, and only the confirmation runs may reveal it.
 
 ## Related tools
