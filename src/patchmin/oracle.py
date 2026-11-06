@@ -77,7 +77,8 @@ class WorktreeOracle:
     result flaky and resolves to UNRESOLVED. ``rest_cmd``, when given, runs
     after a passing target run; a subset passes only when both commands do,
     so the rest of the suite stays green. ``jobs`` worktrees are created and
-    ``run_many`` runs that many subsets at once.
+    ``run_many`` runs that many subsets at once. ``unidiff_zero`` lets
+    ``git apply`` take hunks without context lines (diffs made with ``-U0``).
     """
 
     def __init__(
@@ -92,6 +93,7 @@ class WorktreeOracle:
         work_dir: Path | None = None,
         rest_cmd: str | None = None,
         jobs: int = 1,
+        unidiff_zero: bool = False,
     ) -> None:
         self.repo = Path(repo)
         self.base = base
@@ -103,6 +105,7 @@ class WorktreeOracle:
         self.work_dir = work_dir
         self.rest_cmd = rest_cmd
         self.jobs = max(1, int(jobs))
+        self.unidiff_zero = unidiff_zero
         self.runs = 0
         self._worktrees: list[Path] = []
         self._lock = threading.Lock()
@@ -138,12 +141,12 @@ class WorktreeOracle:
         _git(worktree, "checkout", "--", ".")
         _git(worktree, "clean", "-fdq")
 
-    @staticmethod
-    def _apply(worktree: Path, patch_text: str) -> bool:
+    def _apply(self, worktree: Path, patch_text: str) -> bool:
         if not patch_text.strip():
             return True
+        flags = ["--unidiff-zero"] if self.unidiff_zero else []
         proc = subprocess.run(
-            ["git", "-C", str(worktree), "apply", "--whitespace=nowarn", "-"],
+            ["git", "-C", str(worktree), "apply", "--whitespace=nowarn", *flags, "-"],
             input=patch_text,
             capture_output=True,
             text=True,

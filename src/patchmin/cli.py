@@ -16,9 +16,9 @@ from .oracle import WorktreeOracle
 from .targets import find_targets
 
 
-def _diff_between(repo: Path, base: str, fix: str) -> str:
+def _diff_between(repo: Path, base: str, fix: str, context: int = 3) -> str:
     proc = subprocess.run(
-        ["git", "-C", str(repo), "diff", "--no-color", base, fix],
+        ["git", "-C", str(repo), "diff", "--no-color", f"-U{context}", base, fix],
         capture_output=True,
         text=True,
         check=True,
@@ -53,6 +53,14 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="GLOB",
         help="path pattern whose hunks are always applied and never searched (repeatable)",
     )
+    p.add_argument(
+        "--context",
+        type=int,
+        default=3,
+        metavar="N",
+        help="context lines for git diff with --fix (default 3); fewer lines give "
+        "smaller hunks, 0 gives one hunk per run of changed lines",
+    )
     p.add_argument("--timeout", type=float, default=600.0, help="seconds per test run")
     p.add_argument("--reruns", type=int, default=0, help="extra runs to confirm each outcome")
     p.add_argument(
@@ -83,7 +91,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.patch is not None:
         patch_text = args.patch.read_text()
     else:
-        patch_text = _diff_between(repo, args.base, args.fix)
+        patch_text = _diff_between(repo, args.base, args.fix, args.context)
+    # Hunks without context lines (a -U0 diff) need git apply --unidiff-zero.
+    zero_context = any(
+        not any(ln.startswith(" ") for ln in h.lines) for h in parse_patch(patch_text).hunks
+    )
     cache = RunCache(args.cache)
     with WorktreeOracle(
         repo,
@@ -95,6 +107,7 @@ def main(argv: list[str] | None = None) -> int:
         cache=cache,
         rest_cmd=args.rest_cmd,
         jobs=args.jobs,
+        unidiff_zero=zero_context,
     ) as oracle:
         if args.find_targets:
             patch = parse_patch(patch_text)

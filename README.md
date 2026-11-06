@@ -44,7 +44,7 @@ The general form:
 
 ```
 patchmin --repo PATH --base COMMIT (--fix COMMIT | --patch FILE) --test-cmd CMD
-    [--target TEST ...] [--find-targets] [--pin GLOB ...] [--rest-cmd CMD]
+    [--context N] [--target TEST ...] [--find-targets] [--pin GLOB ...] [--rest-cmd CMD]
     [--lines] [--jobs N] [--reruns K] [--confirm C] [--timeout SECONDS]
     [--cache runs.json] [--json] [--out minimal.diff]
 ```
@@ -52,6 +52,7 @@ patchmin --repo PATH --base COMMIT (--fix COMMIT | --patch FILE) --test-cmd CMD
 | Option | Meaning |
 |---|---|
 | `--fix` / `--patch` | the fix as a commit (the patch is `git diff BASE FIX`) or as a unified diff file |
+| `--context N` | context lines for `git diff` with `--fix` (default 3); `0` gives one hunk per run of adjacent changed lines, applied with `git apply --unidiff-zero` |
 | `--test-cmd` | the test command; `--target` values are appended to it |
 | `--find-targets` | pytest only: run the tests before and after the fix and use the tests that fail before and pass after as the targets |
 | `--pin GLOB` | hunks in matching files are applied in every trial and never searched (typically the test files of the fix) |
@@ -163,7 +164,7 @@ Data: the repositories were cloned from the source links on https://pypi.org/pro
 ## Limitations
 
 - 1-minimal is not globally minimal: a different, smaller subset may exist that ddmin does not find. The line pass is 1-minimal within each hunk, given the other needed hunks; a line needed only together with a line in another hunk is kept.
-- A subset that does not apply counts as unresolved, which can keep a hunk the fix does not strictly need when a later hunk's context overlaps it. Hunks are not split or re-anchored.
+- A subset that does not apply counts as unresolved, which can keep a hunk the fix does not strictly need when a later hunk's context overlaps it. Hunks are not split or re-anchored after parsing; `--context 0` gives smaller hunks from the start.
 - The isolation algorithm of the same paper (dd, which narrows the difference between a passing and a failing configuration) is not implemented; only ddmin is.
 - `--find-targets` works with pytest only, and maps junit entries to node ids by file and class name; parametrised ids are kept as pytest writes them. Other test runners need `--target`.
 - Test commands are split with `shlex` and run without a shell: pipes, redirection and environment assignments in the command are not supported (wrap them in a script).

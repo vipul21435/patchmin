@@ -162,3 +162,38 @@ def test_matches_any():
     assert matches_any("pkg/tests/test_a.py", ["test_*.py"])
     assert matches_any("docs/x/y.rst", ["docs/"])
     assert not matches_any("pkg/a.py", ["tests/*", "*.md"])
+
+
+@pytest.fixture
+def close_changes(tmp_path: Path) -> dict:
+    """Two changes one line apart: git diff -U3 merges them into one hunk."""
+    repo = tmp_path / "c"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "config", "user.email", "fixture@example.invalid")
+    _git(repo, "config", "user.name", "Fixture")
+    (repo / "m.py").write_text("# old note\nX = 1\nY = 0\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "base")
+    base = _git(repo, "rev-parse", "HEAD")
+    (repo / "m.py").write_text("# new note\nX = 1\nY = 2\n")
+    _git(repo, "commit", "-qam", "fix")
+    fix = _git(repo, "rev-parse", "HEAD")
+    cmd = f'{sys.executable} -c "import m; assert m.Y == 2"'
+    return {"repo": repo, "base": base, "fix": fix, "test_cmd": cmd}
+
+
+@pytest.mark.parametrize(("context", "summary"), [(3, "1 of 1 hunks"), (0, "1 of 2 hunks")])
+def test_context_controls_hunk_size(close_changes, tmp_path, capsys, context, summary):
+    fx = close_changes
+    out = tmp_path / "min.diff"
+    code = main([
+        "--repo", str(fx["repo"]), "--base", fx["base"], "--fix", fx["fix"],
+        "--test-cmd", fx["test_cmd"], "--context", str(context), "--out", str(out),
+    ])
+    text = capsys.readouterr().out
+    assert code == 0, text
+    assert f"{summary} needed" in text
+    assert "minimal patch confirmed: pass" in text
+    if context == 0:
+        assert "new note" not in out.read_text()
