@@ -61,6 +61,15 @@ class MinimizeResult:
     pinned: list[int] = field(default_factory=list)
     unresolved: dict[str, int] = field(default_factory=dict)
     """Distinct subsets left unresolved, by reason (``apply``, ``timeout``, ``flaky``)."""
+    confirm_outcomes: list[str] = field(default_factory=list)
+    """Outcomes of the uncached confirmation runs of ``minimal_patch``."""
+
+    @property
+    def confirmed(self) -> bool | None:
+        """True when every confirmation run passed; None when none were made."""
+        if not self.confirm_outcomes:
+            return None
+        return all(o == Outcome.PASS.value for o in self.confirm_outcomes)
 
     def to_dict(self) -> dict:
         return {
@@ -71,6 +80,8 @@ class MinimizeResult:
             "cached_hits": self.cached_hits,
             "flaky_runs": self.flaky_runs,
             "unresolved": self.unresolved,
+            "confirm": self.confirm_outcomes,
+            "confirmed": self.confirmed,
             "seconds": round(self.seconds, 3),
             "tests": self.trace.tests,
             "lines": [v.__dict__ for v in self.line_verdicts],
@@ -233,14 +244,29 @@ def refine_lines(patch: Patch, result: MinimizeResult, oracle: WorktreeOracle) -
     return result
 
 
+def confirm_result(result: MinimizeResult, oracle: WorktreeOracle, times: int) -> MinimizeResult:
+    """Run the minimal patch ``times`` more times, bypassing the cache."""
+    if result.error is not None or times <= 0:
+        return result
+    t0 = time.monotonic()
+    runs = oracle.confirm(result.minimal_patch, times)
+    result.confirm_outcomes = [r.outcome.value for r in runs]
+    result.runs = oracle.runs
+    result.seconds += time.monotonic() - t0
+    return result
+
+
 def minimize_text(
     patch_text: str,
     oracle: WorktreeOracle,
     lines: bool = False,
     pin: list[str] | None = None,
+    confirm: int = 0,
 ) -> MinimizeResult:
+    """Parse ``patch_text``, minimise its hunks, optionally refine lines and
+    confirm the answer with ``confirm`` uncached runs."""
     patch = parse_patch(patch_text)
     result = minimize_patch(patch, oracle, pin=pin)
     if lines:
         result = refine_lines(patch, result, oracle)
-    return result
+    return confirm_result(result, oracle, confirm)

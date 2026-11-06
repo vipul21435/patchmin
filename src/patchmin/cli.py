@@ -53,6 +53,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--timeout", type=float, default=600.0, help="seconds per test run")
     p.add_argument("--reruns", type=int, default=0, help="extra runs to confirm each outcome")
+    p.add_argument(
+        "--confirm",
+        type=int,
+        default=1,
+        help="uncached runs of the final minimal patch to confirm it passes (0 to skip)",
+    )
     p.add_argument("--jobs", type=int, default=1, help="git worktrees to run in parallel")
     p.add_argument("--cache", type=Path, default=None, help="JSON file for the run cache")
     p.add_argument(
@@ -82,7 +88,9 @@ def main(argv: list[str] | None = None) -> int:
         rest_cmd=args.rest_cmd,
         jobs=args.jobs,
     ) as oracle:
-        result = minimize_text(patch_text, oracle, lines=args.lines, pin=args.pin)
+        result = minimize_text(
+            patch_text, oracle, lines=args.lines, pin=args.pin, confirm=args.confirm
+        )
     if args.json:
         print(json.dumps(result.to_dict(), indent=2))
     else:
@@ -109,9 +117,14 @@ def main(argv: list[str] | None = None) -> int:
             f"{result.flaky_runs} flaky, {timeouts} timed out, {unapplied} did not apply) "
             f"in {result.seconds:.1f}s"
         )
+        if result.confirm_outcomes:
+            verdict = "confirmed" if result.confirmed else "NOT confirmed"
+            print(f"minimal patch {verdict}: {', '.join(result.confirm_outcomes)}")
     if args.out is not None and not result.error:
         args.out.write_text(result.minimal_patch)
-    return 1 if result.error else 0
+    if result.error:
+        return 1
+    return 2 if result.confirmed is False else 0
 
 
 if __name__ == "__main__":

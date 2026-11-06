@@ -167,3 +167,52 @@ def test_line_refinement_drops_the_comment_change(fixture_repo):
     assert "now correctly" not in result.minimal_patch
     assert "# adds two numbers" in result.minimal_patch
     assert result.runs > result.trace.tests - 2 or result.cached_hits > 0
+
+
+def test_confirm_runs_bypass_the_cache(fixture_repo):
+    with WorktreeOracle(
+        fixture_repo["repo"], fixture_repo["base"], fixture_repo["test_cmd"]
+    ) as oracle:
+        result = minimize_text(_diff(fixture_repo), oracle, lines=True, confirm=2)
+        runs_before_confirm = result.trace.tests + 2 - oracle.cache.hits
+    assert result.confirm_outcomes == ["pass", "pass"]
+    assert result.confirmed is True
+    assert result.runs == runs_before_confirm + 2
+    assert result.to_dict()["confirmed"] is True
+
+
+def test_confirm_catches_an_answer_that_stops_passing(fixture_repo, tmp_path, capsys):
+    import sys
+
+    # Behaves like the real check for the 5 calls the search makes on this
+    # fixture (2 pre-checks, 3 ddmin trials), then always fails:
+    # a cached pass that no longer holds when the answer is run again.
+    counter = tmp_path / "count"
+    script = tmp_path / "check.py"
+    script.write_text(
+        "import pathlib, sys\n"
+        f"p = pathlib.Path({str(counter)!r})\n"
+        "n = int(p.read_text()) if p.exists() else 0\n"
+        "p.write_text(str(n + 1))\n"
+        "if n >= 5:\n    sys.exit(1)\n"
+        "sys.path.insert(0, '.')\n"
+        "import calc\n"
+        "sys.exit(0 if calc.add(2, 3) == 5 else 1)\n"
+    )
+    code = main([
+        "--repo", str(fixture_repo["repo"]), "--base", fixture_repo["base"],
+        "--fix", fixture_repo["fix"], "--test-cmd", f"{sys.executable} {script}",
+        "--confirm", "2",
+    ])
+    out = capsys.readouterr().out
+    assert code == 2
+    assert "1 of 4 hunks needed" in out
+    assert "minimal patch NOT confirmed: fail, fail" in out
+
+
+def test_confirm_zero_skips(fixture_repo):
+    with WorktreeOracle(
+        fixture_repo["repo"], fixture_repo["base"], fixture_repo["test_cmd"]
+    ) as oracle:
+        result = minimize_text(_diff(fixture_repo), oracle, confirm=0)
+    assert result.confirm_outcomes == [] and result.confirmed is None

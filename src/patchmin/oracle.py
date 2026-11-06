@@ -205,6 +205,17 @@ class WorktreeOracle:
             self.open()
         return self._run_fresh(key, patch_text, self._worktrees[0])
 
+    def confirm(self, patch_text: str, times: int) -> list[RunResult]:
+        """Run ``patch_text`` ``times`` times without the cache.
+
+        Used on the final answer: a cached pass may come from an earlier run
+        that was lucky, and the line pass may combine refined hunks into a
+        patch that was not run as a whole.
+        """
+        if not self._worktrees:
+            self.open()
+        return [self._run_once(patch_text, self._worktrees[0]) for _ in range(times)]
+
     def run_many(self, patch_texts: list[str]) -> list[RunResult]:
         """Run several subsets, up to ``jobs`` at a time, one worktree each.
 
