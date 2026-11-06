@@ -1,0 +1,111 @@
+import json
+from pathlib import Path
+
+from patchmin.cache import RunCache
+from patchmin.cli import main
+from patchmin.core import minimize_text
+from patchmin.oracle import Outcome, WorktreeOracle
+
+
+def _diff(fixture_repo):
+    import subprocess
+
+    return subprocess.run(
+        ["git", "-C", str(fixture_repo["repo"]), "diff", fixture_repo["base"], fixture_repo["fix"]],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+
+
+def test_minimizes_to_the_one_needed_hunk(fixture_repo):
+    with WorktreeOracle(
+        fixture_repo["repo"], fixture_repo["base"], fixture_repo["test_cmd"]
+    ) as oracle:
+        result = minimize_text(_diff(fixture_repo), oracle)
+    assert result.error is None
+    assert result.needed == [1]
+    assert [v.needed for v in result.verdicts] == [False, True, False, False]
+    assert "a + b" in result.minimal_patch
+    assert "documented" not in result.minimal_patch
+    assert result.runs == result.trace.tests + 2
+
+
+def test_cache_avoids_repeat_runs(fixture_repo, tmp_path):
+    cache_path = tmp_path / "cache.json"
+    text = _diff(fixture_repo)
+    with WorktreeOracle(
+        fixture_repo["repo"], fixture_repo["base"], fixture_repo["test_cmd"],
+        cache=RunCache(cache_path),
+    ) as oracle:
+        first = minimize_text(text, oracle)
+    assert first.cached_hits == 0
+    with WorktreeOracle(
+        fixture_repo["repo"], fixture_repo["base"], fixture_repo["test_cmd"],
+        cache=RunCache(cache_path),
+    ) as oracle:
+        second = minimize_text(text, oracle)
+    assert second.needed == first.needed
+    assert second.runs == 0
+    assert second.cached_hits > 0
+
+
+def test_unresolved_when_patch_does_not_apply(fixture_repo):
+    bad = "--- a/calc.py\n+++ b/calc.py\n@@ -1 +1 @@\n-nothing like this\n+x\n"
+    with WorktreeOracle(
+        fixture_repo["repo"], fixture_repo["base"], fixture_repo["test_cmd"]
+    ) as oracle:
+        assert oracle.run(bad).outcome is Outcome.UNRESOLVED
+
+
+def test_timeout_is_unresolved(fixture_repo):
+    import sys
+
+    cmd = f'{sys.executable} -I -c "import time; time.sleep(5)"'
+    with WorktreeOracle(
+        fixture_repo["repo"], fixture_repo["base"], cmd, timeout=0.3
+    ) as oracle:
+        assert oracle.run("").outcome is Outcome.UNRESOLVED
+
+
+def test_error_when_full_patch_fails(fixture_repo):
+    import sys
+
+    cmd = f'{sys.executable} -I -c "raise SystemExit(1)"'
+    with WorktreeOracle(fixture_repo["repo"], fixture_repo["base"], cmd) as oracle:
+        result = minimize_text(_diff(fixture_repo), oracle)
+    assert result.error == "full patch does not make the target tests pass"
+    assert result.verdicts == []
+
+
+def test_cli_json_and_out(fixture_repo, tmp_path, capsys):
+    out = tmp_path / "min.diff"
+    code = main(
+        [
+            "--repo", str(fixture_repo["repo"]),
+            "--base", fixture_repo["base"],
+            "--fix", fixture_repo["fix"],
+            "--test-cmd", fixture_repo["test_cmd"],
+            "--json",
+            "--out", str(out),
+        ]
+    )
+    assert code == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["needed"] == [1]
+    assert Path(out).read_text().count("\n@@ -") == 1
+
+
+def test_cli_text_output(fixture_repo, capsys):
+    code = main(
+        [
+            "--repo", str(fixture_repo["repo"]),
+            "--base", fixture_repo["base"],
+            "--fix", fixture_repo["fix"],
+            "--test-cmd", fixture_repo["test_cmd"],
+        ]
+    )
+    assert code == 0
+    text = capsys.readouterr().out
+    assert "1 of 4 hunks needed" in text
+    assert text.count("not needed") == 3
