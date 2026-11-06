@@ -8,6 +8,7 @@ import shlex
 import subprocess
 import sys
 from pathlib import Path
+from typing import NoReturn
 
 from . import __version__
 from .cache import RunCache
@@ -64,8 +65,17 @@ def _seconds(text: str) -> float:
     return value
 
 
+class _Parser(argparse.ArgumentParser):
+    """argparse with exit code 1 for a usage error, as for any other error;
+    exit code 2 is kept for a failed confirmation."""
+
+    def error(self, message: str) -> NoReturn:
+        self.print_usage(sys.stderr)
+        self.exit(1, f"{self.prog}: error: {message}\n")
+
+
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(
+    p = _Parser(
         prog="patchmin",
         description="Find the hunks of a fix that make the target tests pass.",
     )

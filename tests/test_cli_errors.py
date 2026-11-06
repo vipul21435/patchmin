@@ -47,10 +47,18 @@ def test_directory_that_is_not_a_repo(fixture_repo, tmp_path, capsys):
      ("--timeout", "0"), ("--timeout", "soon"), ("--jobs", "two")],
 )
 def test_out_of_range_numbers_are_rejected(fixture_repo, capsys, flag, value):
+    # Exit code 1 like any other error; 2 means a confirming run failed.
     with pytest.raises(SystemExit) as stop:
         main(_args(fixture_repo, **{flag: value}))
-    assert stop.value.code == 2
+    assert stop.value.code == 1
     assert flag in capsys.readouterr().err
+
+
+def test_missing_required_flag_exits_with_one(fixture_repo, capsys):
+    with pytest.raises(SystemExit) as stop:
+        main(_args(fixture_repo, **{"--test-cmd": None}))
+    assert stop.value.code == 1
+    assert "--test-cmd" in capsys.readouterr().err
 
 
 def test_missing_program_prints_no_hunk_counts(fixture_repo, capsys):
