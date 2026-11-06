@@ -22,30 +22,43 @@ FAILED = "failed"
 SKIPPED = "skipped"
 
 
-def node_id(file: str, classname: str, name: str) -> str:
+def node_id(file: str, classname: str, name: str, root: Path | None = None) -> str:
     """Rebuild a pytest node id from a junit ``testcase`` element's fields.
 
-    ``classname`` is the dotted module path, followed by the class name for
-    a test method; the module part is matched against ``file``.
+    ``classname`` is the dotted module path of the node id, followed by the
+    class names for a test method. With ``root`` (the directory pytest ran
+    in), the module is the longest dotted prefix of ``classname`` that names
+    a ``.py`` file under ``root``; this is right for a method inherited from
+    a class in another module, where ``file`` is the module that defines it.
+    Without ``root``, or when no prefix names a file, the module part is
+    matched against ``file``.
     """
+    if root is not None:
+        parts = [p for p in classname.split(".") if p]
+        for i in range(len(parts), 0, -1):
+            candidate = "/".join(parts[:i]) + ".py"
+            if (root / candidate).is_file():
+                return "::".join([candidate, *parts[i:], name])
     module = file[:-3].replace("/", ".") if file.endswith(".py") else file.replace("/", ".")
     rest = classname[len(module) :].lstrip(".") if classname.startswith(module) else ""
     parts = [file, *([p for p in rest.split(".") if p]), name]
     return "::".join(parts)
 
 
-def parse_junit(text: str) -> dict[str, str]:
+def parse_junit(text: str, root: Path | None = None) -> dict[str, str]:
     """Map node id to ``passed``, ``failed`` or ``skipped``.
+
+    ``root`` is passed to :func:`node_id`.
 
     A test case with a ``failure`` or ``error`` child counts as failed, even
     when another entry for the same id passed (pytest writes extra entries
     for subtests).
     """
-    root = ET.fromstring(text)
+    tree = ET.fromstring(text)
     out: dict[str, str] = {}
-    for case in root.iter("testcase"):
+    for case in tree.iter("testcase"):
         file = case.get("file") or ""
-        nid = node_id(file, case.get("classname", ""), case.get("name", ""))
+        nid = node_id(file, case.get("classname", ""), case.get("name", ""), root)
         tags = {child.tag for child in case}
         if tags & {"failure", "error"}:
             status = FAILED
@@ -104,7 +117,7 @@ def find_targets(
                 what = "before" if i == 0 else "after"
                 why = result.reason or "no junit report written"
                 return TargetReport([], error=f"test run {what} the fix failed: {why}")
-            reports.append(parse_junit(xml.read_text()))
+            reports.append(parse_junit(xml.read_text(), root=oracle.worktree))
     before, after = reports
     targets = sorted(t for t, s in after.items() if s == PASSED and before.get(t, FAILED) == FAILED)
     return TargetReport(targets, before, after)

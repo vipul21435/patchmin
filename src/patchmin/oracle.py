@@ -160,6 +160,11 @@ class WorktreeOracle:
     def _worktree(self) -> Path | None:
         return self._worktrees[0] if self._worktrees else None
 
+    @property
+    def worktree(self) -> Path | None:
+        """The first worktree, where :meth:`execute` runs; None before :meth:`open`."""
+        return self._worktree
+
     def __enter__(self) -> WorktreeOracle:
         self.open()
         return self

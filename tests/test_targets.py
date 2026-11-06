@@ -158,3 +158,30 @@ def test_cli_warns_about_tests_the_fix_breaks(pytest_repo, capsys):
     out = capsys.readouterr().out
     assert code == 0, out
     assert "warning: 1 tests pass before the fix and fail after" in out
+
+
+def test_inherited_test_methods_keep_their_own_class(tmp_path):
+    import subprocess
+    import sys
+
+    from patchmin.targets import parse_junit
+
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "__init__.py").write_text("")
+    (tests / "base.py").write_text("class Base:\n    def test_x(self):\n        pass\n")
+    (tests / "test_a.py").write_text(
+        "from tests.base import Base\n\n\nclass TestA(Base):\n    pass\n\n\n"
+        "class TestB(Base):\n    pass\n\n\ndef test_plain():\n    pass\n"
+    )
+    xml = tmp_path / "out.xml"
+    subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", f"--junitxml={xml}",
+         "-o", "junit_family=xunit1", "tests/test_a.py"],
+        cwd=tmp_path, capture_output=True, check=True,
+    )
+    assert parse_junit(xml.read_text(), root=tmp_path) == {
+        "tests/test_a.py::TestA::test_x": "passed",
+        "tests/test_a.py::TestB::test_x": "passed",
+        "tests/test_a.py::test_plain": "passed",
+    }
