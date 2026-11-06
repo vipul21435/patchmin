@@ -1,6 +1,10 @@
 # patchmin
 
-Find the part of a fix that actually fixes it: delta debugging over the hunks (and optionally the lines) of a patch, against a test command, down to a 1-minimal subset that still turns the target tests green while the rest of the suite stays green.
+[![ci](https://github.com/vipul21435/patchmin/actions/workflows/ci.yml/badge.svg)](https://github.com/vipul21435/patchmin/actions/workflows/ci.yml)
+
+Find the part of a bug fix that actually fixes it. Given a git repository, a fix commit or patch, and a test command, patchmin drops hunks and lines from the fix with delta debugging (Zeller and Hildebrandt, 2002) until every remaining piece is needed for the target tests to pass and the rest of the suite to stay green.
+
+On tabulate commit 8014ec6 ("Fix alignments in `github` tables"), 1 of the 3 non-test hunks and 1 of the 4 lines that hunk adds are enough for the four target tests and the rest of the suite: 22 test runs, 14.3 s on a laptop. The command and two more commits are under [Results on real public data](#results-on-real-public-data).
 
 ## Why this is hard
 
@@ -20,11 +24,13 @@ uv pip install -e ".[dev]"
 uv run pytest -q
 ```
 
-On 2026-11-06 `uv run pytest -q --cov=patchmin` ran 121 tests, offline, with 98 % line coverage of `src/patchmin` (the tests build their own git repositories in temporary folders). The laptop was busy with other work (1-minute load average between 8 and 27): that run took 70 s, and `uv run pytest -q` took 43 s right after it.
+On 2026-11-06 `uv run pytest -q --cov=patchmin` ran 147 tests, offline, with 98 % line coverage of `src/patchmin` (the tests build their own git repositories in temporary folders). With a 1-minute load average of 2.4 on the laptop, that run took 36 s, and `uv run pytest -q` took 35 s right after it.
 
 ## Quickstart
 
-`examples/run_fixture.py` builds a two-commit git repository in a temporary folder: a small `calc.py` with a wrong `add`, then a fix commit of four hunks (a module docstring edit, the real fix together with a comment edit, a function docstring edit, a rewrite of `neg`). It then runs the command line tool on it. Output of `uv run python examples/run_fixture.py` on 2026-11-06:
+From a clone (`git clone https://github.com/vipul21435/patchmin && cd patchmin`, then the development install above):
+
+`examples/run_fixture.py` builds a two-commit git repository in a temporary folder: a small `calc.py` with a wrong `add`, then a fix commit of four hunks (a module docstring edit, the real fix together with a comment edit, a function docstring edit, a rewrite of `neg`). It then runs the command line tool on it (all options are listed under [Reference](#reference)). Output of `uv run python examples/run_fixture.py` on 2026-11-06:
 
 ```
 $ patchmin --repo <repo> --base <base> --fix <fix> --lines \
@@ -42,7 +48,43 @@ needed      hunk 1   line 6   +    return a + b
 minimal patch confirmed: pass
 ```
 
-The general form:
+Every hunk is printed with a status (`needed`, `not needed`, `pinned`) and a kind (`docs`, `test`, `whitespace`, `comment`, `rename`, `code`). The kind is a hint for reading the report; it plays no part in the search.
+
+## How it works
+
+1. **Hunks.** The patch is parsed into hunks, numbered across files. Each `@@` header's line counts decide where its hunk ends, so a mail signature or the next file's `---`/`+++` header is never read as a changed line. The diff is read as bytes and split on `\n` only, so `\r`, form feeds, U+2028 and bytes that are not UTF-8 pass through unchanged. A subset of hunks is rendered back into a unified diff; new-side line numbers are recomputed from the cumulative line delta of the hunks kept before it, so any subset of a file's hunks applies cleanly.
+2. **Oracle.** A trial applies the rendered diff with `git apply` in a detached worktree at `BASE` (after `git checkout -- .`, `git clean -fdq` and deleting ignored `__pycache__` directories and `.pyc` files), runs the test command with the targets appended and, if that passes, the rest command. Each command runs in its own process group; on timeout the whole group is killed, so test runners that start workers leave nothing behind. Exit code 0 is a pass, any other code a fail; a diff that does not apply or a command that times out is *unresolved*, which ddmin treats like a fail (the subset is not kept).
+3. **Cache.** Every outcome is stored under `SHA-256(base commit id, test command, targets as a JSON list, rest command, rendered diff)`, with a NUL byte after each part; the JSON list keeps a target that contains a space apart from two targets. `--base` is resolved to its full commit id first, so a name such as `HEAD~1` that later points at another commit does not reuse old outcomes. Equal subsets are never run twice, within a search, across the hunk and line passes, or across invocations with `--cache`. A cached timeout is ignored when the current `--timeout` is longer than the one it was recorded with. A cached pass or fail is ignored when it was recorded with fewer `--reruns` than the current run asks for. The file is written to a sibling and renamed, so an interrupted run does not corrupt it.
+4. **Flakiness.** With `--reruns K`, a fresh pass or fail is run K more times; if any rerun disagrees, the subset is recorded as flaky and unresolved. The report counts distinct flaky subsets.
+5. **Pre-checks.** The full patch must pass and the pinned hunks alone (the empty patch when nothing is pinned) must fail; otherwise the tool says which and stops with exit code 1.
+6. **Search.** ddmin, the minimising delta debugging algorithm of Zeller and Hildebrandt, "Simplifying and Isolating Failure-Inducing Input", IEEE Transactions on Software Engineering 28(2), 183-200, 2002 (https://doi.org/10.1109/32.988498). The property kept here is "the target tests pass". Starting with granularity n = 2, the current set is split into n chunks; if some chunk alone passes, it becomes the current set and n resets to 2; otherwise, if the complement of some chunk passes, it becomes the current set and n becomes max(n - 1, 2); otherwise n doubles, up to the size of the set. With two chunks the complements are the chunks themselves and are not tried again. The loop ends when n equals the size of the set and no chunk or complement passes; the result is then 1-minimal: removing any single hunk makes the tests fail. Proposition 12 of the paper bounds the number of trials by n² + 3n for n hunks; the property tests check that bound and 1-minimality on random non-monotone oracles.
+7. **Parallel worktrees.** With `--jobs N`, all chunks of one round are run at once, one worktree each, and the first passing one in order is taken. When a round has fewer chunks than N, the free worktrees run the first complements of the same round speculatively; the remaining complements follow only if no chunk and no speculative complement passes. The answer is the same as the sequential search; the parallel search may run subsets that the sequential one would have skipped.
+8. **Lines.** With `--lines`, each needed hunk is refined by a second ddmin over its `+` and `-` lines, one hunk at a time with the other needed hunks kept whole. A dropped `+` line disappears and a dropped `-` line turns back into context, so every trial is still a valid diff. Within each run of changed lines the k-th `-` line is paired with the k-th `+` line, and a kept old line is placed where its partner goes: for a two-line replacement `a = 1`, `return a` to `a = 2`, `return a  # now two`, keeping only `+a = 2` gives `a = 1`, `a = 2`, `return a`, and the comment-only line is not needed. `\ No newline at end of file` markers move with their line, so only the last line of each side lacks a newline; `tests/test_line_pairs.py` applies every non-empty line subset of such a hunk and compares the file with the pairing rule; `tests/test_render_subsets.py` checks this with `git apply --check` for every subset of hunks and every non-empty subset of lines in each hunk of a two-file patch with a new file and a deleted file, at 3 and 0 context lines. A hunk that deletes a whole file is kept whole: keeping some of its `-` lines would leave a deleted file with contents, which `git apply` rejects.
+9. **Confirmation.** The final minimal patch is run `--confirm` more times, bypassing the cache. This catches a cached pass that was lucky and checks the combined result of the line pass, whose pieces were run one hunk at a time.
+10. **Targets.** With `--find-targets`, the test command is run with `--junitxml` (xunit1 family) once with only the pinned hunks and once with the whole patch, limited to the Python files of the pinned hunks. The targets are the tests that pass after the fix and failed (or did not exist) before it: the FAIL_TO_PASS set of SWE-bench ("SWE-bench: Can Language Models Resolve Real-World GitHub Issues?", ICLR 2024, https://arxiv.org/abs/2310.06770; field definitions on https://huggingface.co/datasets/princeton-nlp/SWE-bench). Tests that passed before and fail after are reported as a warning.
+11. **Kinds.** `docs` is a hunk in a documentation file, `test` a hunk in a test file, `whitespace` a hunk whose lines are equal once whitespace is removed, `comment` a hunk whose changed lines are `#` comments or sit inside a docstring (the docstring state at the top of the hunk is guessed from the first triple-quote fence), `rename` a hunk whose removed and added lines are the same token for token except for identifiers that map one to one (keywords, `True`, `False`, `None` and builtins such as `min` do not count as identifiers, so `return True` to `return False` is `code`), and `code` anything else.
+
+There are no thresholds on patch size or on the number of hunks, and the tool never grades a fix. A "not needed" label says only that the target tests (and the rest command) pass without that hunk; it does not say the hunk is useless.
+
+### Cost of the search
+
+`examples/ddmin_cost.py` counts the trials ddmin makes when k of n hunks are needed (oracle: "all k are present"), over 200 random placements per point with seed 1. Output of `uv run --with matplotlib python examples/ddmin_cost.py --plot docs/ddmin_cost.png`, mean (max) trials:
+
+| hunks n | k=1 | k=2 | k=4 | n²+3n |
+|---|---|---|---|---|
+| 4 | 3.0 (4) | 11.4 (16) | 10.0 (10) | 28 |
+| 8 | 4.5 (6) | 21.6 (30) | 40.9 (58) | 88 |
+| 16 | 6.0 (8) | 33.2 (44) | 76.3 (104) | 304 |
+| 32 | 7.6 (10) | 44.5 (58) | 115.5 (149) | 1120 |
+| 64 | 8.8 (12) | 56.4 (72) | 152.2 (197) | 4288 |
+
+![ddmin trials against the number of hunks, for 1, 2 and 4 needed hunks](docs/ddmin_cost.png)
+
+These are trials, not test runs: ddmin asks about some subsets more than once, and the cache answers the repeats.
+
+### Reference
+
+The general form of the command:
 
 ```
 patchmin --repo PATH --base COMMIT (--fix COMMIT | --patch FILE) --test-cmd CMD
@@ -97,40 +139,6 @@ runs: 19 cache hits: 6 confirmed: True
 
 With `jobs=2` the run count is 19 rather than the 14 of the sequential command above: each parallel round runs every chunk of the round.
 
-Every hunk is printed with a status (`needed`, `not needed`, `pinned`) and a kind (`docs`, `test`, `whitespace`, `comment`, `rename`, `code`). The kind is a hint for reading the report; it plays no part in the search.
-
-## How it works
-
-1. **Hunks.** The patch is parsed into hunks, numbered across files. A subset of hunks is rendered back into a unified diff; new-side line numbers are recomputed from the cumulative line delta of the hunks kept before it, so any subset of a file's hunks applies cleanly.
-2. **Oracle.** A trial applies the rendered diff with `git apply` in a detached worktree at `BASE` (after `git checkout -- .` and `git clean -fdq`), runs the test command with the targets appended and, if that passes, the rest command. Each command runs in its own process group; on timeout the whole group is killed, so test runners that start workers leave nothing behind. Exit code 0 is a pass, any other code a fail; a diff that does not apply or a command that times out is *unresolved*, which ddmin treats like a fail (the subset is not kept).
-3. **Cache.** Every outcome is stored under `SHA-256(base commit id, test command, targets as a JSON list, rest command, rendered diff)`, with a NUL byte after each part; the JSON list keeps a target that contains a space apart from two targets. `--base` is resolved to its full commit id first, so a name such as `HEAD~1` that later points at another commit does not reuse old outcomes. Equal subsets are never run twice, within a search, across the hunk and line passes, or across invocations with `--cache`. A cached timeout is ignored when the current `--timeout` is longer than the one it was recorded with. A cached pass or fail is ignored when it was recorded with fewer `--reruns` than the current run asks for. The file is written to a sibling and renamed, so an interrupted run does not corrupt it.
-4. **Flakiness.** With `--reruns K`, a fresh pass or fail is run K more times; if any rerun disagrees, the subset is recorded as flaky and unresolved. The report counts distinct flaky subsets.
-5. **Pre-checks.** The full patch must pass and the pinned hunks alone (the empty patch when nothing is pinned) must fail; otherwise the tool says which and stops with exit code 1.
-6. **Search.** ddmin, the minimising delta debugging algorithm of Zeller and Hildebrandt, "Simplifying and Isolating Failure-Inducing Input", IEEE Transactions on Software Engineering 28(2), 183-200, 2002 (https://doi.org/10.1109/32.988498). The property kept here is "the target tests pass". Starting with granularity n = 2, the current set is split into n chunks; if some chunk alone passes, it becomes the current set and n resets to 2; otherwise, if the complement of some chunk passes, it becomes the current set and n becomes max(n - 1, 2); otherwise n doubles, up to the size of the set. With two chunks the complements are the chunks themselves and are not tried again. The loop ends when n equals the size of the set and no chunk or complement passes; the result is then 1-minimal: removing any single hunk makes the tests fail. Proposition 12 of the paper bounds the number of trials by n² + 3n for n hunks; the property tests check that bound and 1-minimality on random non-monotone oracles.
-7. **Parallel worktrees.** With `--jobs N`, all chunks of one round are run at once, one worktree each, and the first passing one in order is taken. When a round has fewer chunks than N, the free worktrees run the first complements of the same round speculatively; the remaining complements follow only if no chunk and no speculative complement passes. The answer is the same as the sequential search; the parallel search may run subsets that the sequential one would have skipped.
-8. **Lines.** With `--lines`, each needed hunk is refined by a second ddmin over its `+` and `-` lines, one hunk at a time with the other needed hunks kept whole. A dropped `+` line disappears and a dropped `-` line turns back into context, so every trial is still a valid diff. Within each run of changed lines the k-th `-` line is paired with the k-th `+` line, and a kept old line is placed where its partner goes: for a two-line replacement `a = 1`, `return a` to `a = 2`, `return a  # now two`, keeping only `+a = 2` gives `a = 1`, `a = 2`, `return a`, and the comment-only line is not needed. `\ No newline at end of file` markers move with their line, so only the last line of each side lacks a newline; `tests/test_line_pairs.py` applies every non-empty line subset of such a hunk and compares the file with the pairing rule; `tests/test_render_subsets.py` checks this with `git apply --check` for every subset of hunks and every non-empty subset of lines in each hunk of a two-file patch with a new file and a deleted file, at 3 and 0 context lines. A hunk that deletes a whole file is kept whole: keeping some of its `-` lines would leave a deleted file with contents, which `git apply` rejects.
-9. **Confirmation.** The final minimal patch is run `--confirm` more times, bypassing the cache. This catches a cached pass that was lucky and checks the combined result of the line pass, whose pieces were run one hunk at a time.
-10. **Targets.** With `--find-targets`, the test command is run with `--junitxml` (xunit1 family) once with only the pinned hunks and once with the whole patch, limited to the Python files of the pinned hunks. The targets are the tests that pass after the fix and failed (or did not exist) before it: the FAIL_TO_PASS set of SWE-bench ("SWE-bench: Can Language Models Resolve Real-World GitHub Issues?", ICLR 2024, https://arxiv.org/abs/2310.06770; field definitions on https://huggingface.co/datasets/princeton-nlp/SWE-bench). Tests that passed before and fail after are reported as a warning.
-11. **Kinds.** `docs` is a hunk in a documentation file, `test` a hunk in a test file, `whitespace` a hunk whose lines are equal once whitespace is removed, `comment` a hunk whose changed lines are `#` comments or sit inside a docstring (the docstring state at the top of the hunk is guessed from the first triple-quote fence), `rename` a hunk whose removed and added lines are the same token for token except for identifiers that map one to one (keywords, `True`, `False`, `None` and builtins such as `min` do not count as identifiers, so `return True` to `return False` is `code`), and `code` anything else.
-
-There are no thresholds on patch size or on the number of hunks, and the tool never grades a fix. A "not needed" label says only that the target tests (and the rest command) pass without that hunk; it does not say the hunk is useless.
-
-### Cost of the search
-
-`examples/ddmin_cost.py` counts the trials ddmin makes when k of n hunks are needed (oracle: "all k are present"), over 200 random placements per point with seed 1. Output of `uv run --with matplotlib python examples/ddmin_cost.py --plot docs/ddmin_cost.png`, mean (max) trials:
-
-| hunks n | k=1 | k=2 | k=4 | n²+3n |
-|---|---|---|---|---|
-| 4 | 3.0 (4) | 11.4 (16) | 10.0 (10) | 28 |
-| 8 | 4.5 (6) | 21.6 (30) | 40.9 (58) | 88 |
-| 16 | 6.0 (8) | 33.2 (44) | 76.3 (104) | 304 |
-| 32 | 7.6 (10) | 44.5 (58) | 115.5 (149) | 1120 |
-| 64 | 8.8 (12) | 56.4 (72) | 152.2 (197) | 4288 |
-
-![ddmin trials against the number of hunks, for 1, 2 and 4 needed hunks](docs/ddmin_cost.png)
-
-These are trials, not test runs: ddmin asks about some subsets more than once, and the cache answers the repeats.
-
 ## Results on real public data
 
 Three bug-fix commits from two small pure-Python libraries, chosen because the fix commit carries more than the fix (a README or changelog edit, a removed block, several code hunks). For each, the targets are the tests that fail before the fix and pass after; they were first found by hand (applying the commit's test files to the parent and running pytest) and `--find-targets` returns the same lists for all three. The test files are pinned; the whole test suite is the rest command.
@@ -151,11 +159,11 @@ which runs, for each case, `patchmin --base C^ --fix C --pin 'test/*' --test-cmd
 
 | commit | hunks needed | lines needed | ddmin trials | test runs | cache hits | confirm | wall s |
 |---|---|---|---|---|---|---|---|
-| tabulate 8014ec6 | 1 of 3 | 1 of 4 | 8 | 22 | 0 | pass, pass | 13.7 |
-| tabulate 3aa568c | 1 of 3 | 5 of 5 | 24 | 42 | 6 | pass, pass | 11.6 |
-| more-itertools ce676d2 | 3 of 4 | 12 of 12 | 46 | 90 | 4 | pass, pass | 263.0 |
+| tabulate 8014ec6 | 1 of 3 | 1 of 4 | 8 | 22 | 0 | pass, pass | 14.3 |
+| tabulate 3aa568c | 1 of 3 | 5 of 5 | 24 | 42 | 6 | pass, pass | 12.3 |
+| more-itertools ce676d2 | 3 of 4 | 12 of 12 | 46 | 90 | 4 | pass, pass | 204.1 |
 
-The files in `results/` and this table come from a rerun with the current code (1-minute load average 30.6 at the start); it gave the same verdicts and counts as the first run, whose wall times were 11.8, 10.2 and 180.5 s. "Hunks needed" counts the hunks searched (pinned test hunks excluded). "Test runs" includes the two pre-checks, the reruns (`--reruns 1` doubles every fresh run) and the two confirmation runs. No subset was flaky, timed out or failed to apply.
+The files in `results/` and this table come from a rerun on 2026-11-06 after the fixes listed in the changelog (bytecode cleanup between trials, count-based hunk parsing, paired lines in the line pass, cache hit counting), with a 1-minute load average of 4.7 at the start; it gave the same verdicts, trial, run and cache-hit counts as the two earlier runs, whose wall times were 11.8, 10.2 and 180.5 s, then 13.7, 11.6 and 263.0 s. "Hunks needed" counts the hunks searched (pinned test hunks excluded). "Test runs" includes the two pre-checks, the reruns (`--reruns 1` doubles every fresh run) and the two confirmation runs. No subset was flaky, timed out or failed to apply.
 
 What the minimal subsets show:
 
@@ -163,7 +171,7 @@ What the minimal subsets show:
 - **tabulate 3aa568c.** Of the two hunks in `_asciidoc_row`, only the second is needed: it strips the line built for header and data rows, which is where the trailing whitespace came from. The first adds `.rstrip()` to the `[cols=...]` / `|====` line and to the above-line branch; that text ends in `|====`, so stripping it changes nothing the tests see, and the targets and the full suite pass without it. Every line of the needed hunk is needed.
 - **more-itertools ce676d2.** All three code hunks (`split_before`, `split_after`, `split_when`) are needed, each by its own target test, and every line inside them; only the changelog line in `docs/versions.rst` is not needed.
 
-Parallel worktrees. The same command with `--jobs 1`, `4` and `8` (and `--out OTHER_DIR`), six runs in all on the same laptop on 2026-11-06, while other work was running (the 1-minute load average at the start of each run is given; the laptop has 8 cores). Wall seconds:
+Parallel worktrees. The same command with `--jobs 1`, `4` and `8` (and `--out OTHER_DIR`), seven runs in all on the same laptop on 2026-11-06, while other work was running (the 1-minute load average at the start of each run is given; the laptop has 8 cores). Wall seconds:
 
 | run | jobs | load | tabulate 8014ec6 | tabulate 3aa568c | more-itertools ce676d2 |
 |---|---|---|---|---|---|
@@ -172,7 +180,8 @@ Parallel worktrees. The same command with `--jobs 1`, `4` and `8` (and `--out OT
 | repeat | 4 | 5.1 | 17.1 | 15.6 | 275.8 |
 | repeat | 8 | 3.7 | 12.1 | 10.3 | 179.5 |
 | repeat | 1 | 2.6 | 13.2 | 13.9 | 221.2 |
-| rerun (table above) | 4 | 30.6 | 13.7 | 11.6 | 263.0 |
+| rerun | 4 | 30.6 | 13.7 | 11.6 | 263.0 |
+| rerun after fixes (table above) | 4 | 4.7 | 14.3 | 12.3 | 204.1 |
 
 The repeats ran after the batching of chunks with complements was added and gave the same verdicts, trial and run counts as the first runs. With one job, more-itertools took 43 trials and 84 runs; with 4 or 8 jobs, 46 trials and 90 runs, because a parallel round runs every chunk of the round, including those after the first passing one. On this machine the noise between repeats (180.5 s and 275.8 s for the same command) is larger than the gain from parallel worktrees, so these runs do not show a clear speed-up. Two reasons in the search itself: with 4 hunks a round has at most 4 chunks, so at most 4 worktrees are busy, and every passing subset also runs the whole suite as the rest command (about 11 s for more-itertools) inside its own worktree.
 

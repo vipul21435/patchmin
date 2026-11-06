@@ -10,7 +10,7 @@
     ]
   },
   "source": "https://pypi.org/project/tabulate/",
-  "wall_seconds": 11.6,
+  "wall_seconds": 12.3,
   "result": {
     "needed": [
       2
@@ -97,7 +97,7 @@
       "pass"
     ],
     "confirmed": true,
-    "seconds": 11.225,
+    "seconds": 12.027,
     "tests": 24,
     "lines": [
       {
