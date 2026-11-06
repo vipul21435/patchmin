@@ -64,6 +64,32 @@ patchmin --repo PATH --base COMMIT (--fix COMMIT | --patch FILE) --test-cmd CMD
 | `--cache FILE` | keep outcomes in a JSON file, so a second invocation reuses them |
 | `--json`, `--out` | print the result as JSON; write the minimal patch as a diff that `git apply` accepts on `BASE` |
 
+From Python (`uv run python examples/python_api.py`, abridged output below the code):
+
+```python
+from patchmin import RunCache, WorktreeOracle, minimize_text
+
+with WorktreeOracle(repo, base, test_cmd, cache=RunCache(), jobs=2) as oracle:
+    result = minimize_text(diff, oracle, lines=True, confirm=1)
+print(result.needed, result.runs, result.cached_hits, result.confirmed)
+print(result.minimal_patch)
+```
+
+```
+needed hunks: [1]
+kinds: [(0, 'comment', 'not needed'), (1, 'code', 'needed'), (2, 'comment', 'not needed'), (3, 'code', 'not needed')]
+runs: 19 cache hits: 6 confirmed: True
+@@ -11,8 +11,8 @@ PAD = [
+ ]
+
+ def add(a, b):
+     # adds two numbers
+-    return a - b
++    return a + b
+```
+
+With `jobs=2` the run count is 19 rather than the 14 of the sequential command above: each parallel round runs every chunk of the round.
+
 Every hunk is printed with a status (`needed`, `not needed`, `pinned`) and a kind (`docs`, `test`, `whitespace`, `comment`, `rename`, `code`). The kind is a hint for reading the report; it plays no part in the search.
 
 ## How it works

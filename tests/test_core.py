@@ -217,3 +217,11 @@ def test_confirm_zero_skips(fixture_repo):
     ) as oracle:
         result = minimize_text(_diff(fixture_repo), oracle, confirm=0)
     assert result.confirm_outcomes == [] and result.confirmed is None
+
+
+def test_public_api_exports():
+    import patchmin
+
+    for name in patchmin.__all__:
+        assert hasattr(patchmin, name), name
+    assert patchmin.__version__ == "0.1.0"
