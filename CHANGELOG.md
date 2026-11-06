@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+- Ignored `__pycache__` directories and `.pyc` files are deleted between
+  trials and test commands run with `PYTHONDONTWRITEBYTECODE=1`; before,
+  a same-size edit could run the previous trial's bytecode and give a
+  wrong verdict. `--clean-ignored` deletes every ignored file.
+- Hunks end where their `@@` line counts say, so plain `diff -ru` patches
+  with several files and `git format-patch` mails (with their `-- `
+  signature) parse correctly.
+- Diffs are read as bytes and split on `\n` only: CRLF files, form feeds,
+  U+2028 and bytes that are not UTF-8 no longer break the run. Test output
+  that is not UTF-8 is decoded with replacement characters.
+- The line pass pairs the k-th `-` line of a run of changes with the k-th
+  `+` line, so a kept old line sits where its replacement would go and
+  fewer lines are reported as needed.
+- `--find-targets` builds node ids from the junit class name, so test
+  methods inherited from a class in another module keep their own class.
+- Cache entries ignored for a shorter timeout or fewer reruns are no longer
+  counted as hits; targets are encoded as a JSON list in the cache key
+  (older cache files no longer match).
+- Unbalanced quotes in `--test-cmd`/`--rest-cmd` and a `--cache` file that
+  is not JSON give one `error:` line; all errors go to stderr.
+- Keyword, constant and builtin swaps (`True` to `False`, `min` to `max`)
+  are labelled `code`, not `rename`.
 - The run cache is keyed on the commit id `--base` resolves to, not on the
   name as typed, and a cached pass or fail recorded with fewer `--reruns`
   than asked for is run again.
