@@ -120,10 +120,11 @@ def main(argv: list[str] | None = None) -> int:
         if result.error:
             print(f"error: {result.error}")
         for v in result.verdicts:
-            print(
+            line = (
                 f"{v.status:<10}  hunk {v.index:<3} {v.kind:<10} {v.label:<32} "
                 f"+{v.added}/-{v.removed}  {v.heading}"
             )
+            print(line.rstrip())
         for lv in result.line_verdicts:
             mark = "needed    " if lv.needed else "not needed"
             print(f"{mark}  hunk {lv.hunk:<3} line {lv.position:<3} {lv.text}")

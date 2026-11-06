@@ -109,6 +109,7 @@ def test_cli_text_output(fixture_repo, capsys):
     text = capsys.readouterr().out
     assert "1 of 4 hunks needed" in text
     assert text.count("not needed") == 3
+    assert all(line == line.rstrip() for line in text.splitlines())
 
 
 def test_rest_cmd_keeps_hunks_the_rest_depends_on(fixture_repo):
