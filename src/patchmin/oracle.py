@@ -21,6 +21,8 @@ from .diff import encode_patch
 
 
 class Outcome(str, Enum):
+    """The outcome of one trial."""
+
     PASS = "pass"
     FAIL = "fail"
     UNRESOLVED = "unresolved"
@@ -28,6 +30,8 @@ class Outcome(str, Enum):
 
 @dataclass
 class RunResult:
+    """One trial: its outcome, time, return code and the tail of its output."""
+
     outcome: Outcome
     seconds: float
     returncode: int | None
@@ -174,6 +178,7 @@ class WorktreeOracle:
         self.close()
 
     def open(self) -> None:
+        """Create the ``jobs`` worktrees at the base commit (once)."""
         if self._worktrees:
             return
         if self.work_dir is not None:
@@ -187,6 +192,7 @@ class WorktreeOracle:
             self._worktrees.append(wt)
 
     def close(self) -> None:
+        """Remove the worktrees, and the temporary folder if this oracle made it."""
         for wt in self._worktrees:
             _git(self.repo, "worktree", "remove", "--force", str(wt), check=False)
         self._worktrees = []

@@ -31,10 +31,12 @@ class Hunk:
 
     @property
     def added(self) -> int:
+        """Number of ``+`` lines."""
         return sum(1 for ln in self.lines if ln.startswith("+"))
 
     @property
     def removed(self) -> int:
+        """Number of ``-`` lines."""
         return sum(1 for ln in self.lines if ln.startswith("-"))
 
     @property
@@ -43,6 +45,7 @@ class Hunk:
         return self.added - self.removed
 
     def label(self) -> str:
+        """``path:old_start``, as printed in the report."""
         return f"{self.new_path}:{self.old_start}"
 
 
@@ -58,10 +61,13 @@ class FilePatch:
 
 @dataclass
 class Patch:
+    """A parsed diff: its files in order, each with its hunks."""
+
     files: list[FilePatch] = field(default_factory=list)
 
     @property
     def hunks(self) -> list[Hunk]:
+        """Every hunk of every file, in patch order."""
         return [h for f in self.files for h in f.hunks]
 
 

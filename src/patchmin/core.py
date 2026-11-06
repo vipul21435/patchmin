@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from .ddmin import DdminTrace, ddmin
@@ -23,6 +24,8 @@ from .oracle import Outcome, RunResult, WorktreeOracle
 
 @dataclass
 class HunkVerdict:
+    """The verdict on one hunk: needed, not needed or pinned, with its kind."""
+
     index: int
     label: str
     needed: bool
@@ -41,6 +44,9 @@ class HunkVerdict:
 
 @dataclass
 class LineVerdict:
+    """The verdict on one change line of a needed hunk (``position`` indexes
+    ``Hunk.lines``)."""
+
     hunk: int
     position: int
     text: str
@@ -49,6 +55,10 @@ class LineVerdict:
 
 @dataclass
 class MinimizeResult:
+    """What a search found: the needed hunks, the verdicts, the minimal patch
+    and the run counts. ``error`` is set, and the verdicts are empty, when a
+    pre-check stopped the search."""
+
     needed: list[int]
     verdicts: list[HunkVerdict]
     minimal_patch: str
@@ -73,6 +83,7 @@ class MinimizeResult:
         return all(o == Outcome.PASS.value for o in self.confirm_outcomes)
 
     def to_dict(self) -> dict:
+        """The result as plain data for ``json.dumps``."""
         return {
             "needed": self.needed,
             "pinned": self.pinned,
@@ -146,7 +157,7 @@ class _Search:
         runs = self.oracle.run_many(texts)
         return [self._note(t, r) for t, r in zip(texts, runs, strict=True)]
 
-    def search(self, items: list, render, trace: DdminTrace) -> list:
+    def search(self, items: list, render: Callable[[list], str], trace: DdminTrace) -> list:
         """ddmin over ``items``; ``render(subset)`` gives the patch text."""
 
         def interesting(subset: list) -> bool:
