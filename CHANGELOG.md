@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Three more real bug-fix commits in the results: toolz `d2eba03` and attrs `af9c510` and `ce89f5d`, next to the three from tabulate and more-itertools, all six run with `--jobs 1` and `--jobs 4`.
+- `examples/reproduce_real_commits.sh`, which clones the libraries, makes a test environment with pinned pytest and hypothesis versions, runs every case with both job counts and prints the results table and the hunk verdicts.
+- `examples/real_commits.py`: per-case extra pytest arguments for the test and rest commands, the job count and load average in each saved result, `--summary` over several result folders, `--hunks` to list every hunk with its verdict, and offline tests for these.
+
+### Changed
+
+- Saved real-commit results moved from `results/` to `results/jobs1/` and `results/jobs4/`.
+
 ## 0.1.0 - 2026-11-06
 
 ### Added

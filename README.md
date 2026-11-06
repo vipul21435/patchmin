@@ -4,7 +4,7 @@
 
 Find the part of a bug fix that actually fixes it. Given a git repository, a fix commit or patch, and a test command, patchmin drops hunks and lines from the fix with delta debugging (Zeller and Hildebrandt, 2002) until every remaining piece is needed for the target tests to pass and the rest of the suite to stay green.
 
-On tabulate commit 8014ec6 ("Fix alignments in `github` tables"), 1 of the 3 non-test hunks and 1 of the 4 lines that hunk adds are enough for the four target tests and the rest of the suite: 22 test runs, 14.3 s on a laptop. The command and two more commits are under [Results on real public data](#results-on-real-public-data).
+On tabulate commit 8014ec6 ("Fix alignments in `github` tables"), 1 of the 3 non-test hunks and 1 of the 4 lines that hunk adds are enough for the four target tests and the rest of the suite: 22 test runs with `--jobs 4`, 38.0 s on a loaded laptop. The command and five more commits from more-itertools, toolz and attrs are under [Results on real public data](#results-on-real-public-data).
 
 ## Why this is hard
 
@@ -141,37 +141,88 @@ With `jobs=2` the run count is 19 rather than the 14 of the sequential command a
 
 ## Results on real public data
 
-Three bug-fix commits from two small pure-Python libraries, chosen because the fix commit carries more than the fix (a README or changelog edit, a removed block, several code hunks). For each, the targets are the tests that fail before the fix and pass after; they were first found by hand (applying the commit's test files to the parent and running pytest) and `--find-targets` returns the same lists for all three. The test files are pinned; the whole test suite is the rest command.
+Six bug-fix commits from four small pure-Python libraries, chosen because the fix commit carries more than the fix (a README, changelog or changelog-fragment edit, a docstring line, a removed block or import, several code hunks). For each, the targets are the tests that fail before the fix and pass after; they were found by hand (applying the commit's test files to the parent and running pytest), and for the first three `--find-targets` returns the same lists. The test files are pinned; the whole test suite is the rest command.
 
 | Library | Commit | Fix |
 |---|---|---|
 | tabulate | `8014ec6` (2026-03-05) | Fix alignments in `github` tables |
 | tabulate | `3aa568c` (2026-03-05) | fix #408 - remove trailing whitespace from asciidoc output |
 | more-itertools | `ce676d2` (2026-09-04) | Do not yield an empty list for an empty iterable when maxsplit is 0 |
+| toolz | `d2eba03` (2026-09-18) | Fix interpose([]) raising StopIteration |
+| attrs | `af9c510` (2026-03-14) | Fix validators.disabled() to save/restore state on nesting |
+| attrs | `ce89f5d` (2026-03-14) | Fix message passing in frozen errors |
 
-Command (Python 3.12.13, pytest 9.2.0 in the interpreter given as `--python`, one laptop, 2026-11-06):
+Command (one laptop with 8 cores, 2026-11-06, Python 3.12.13, pytest 9.2.0, hypothesis 6.170.15):
 
 ```
-uv run python examples/real_commits.py --data DATA_DIR --python PYTHON_WITH_PYTEST --jobs 4
+bash examples/reproduce_real_commits.sh DATA_DIR
 ```
 
-which runs, for each case, `patchmin --base C^ --fix C --pin 'test/*' --test-cmd 'PY -m pytest -q -p no:cacheprovider' --target ... --rest-cmd 'PY -m pytest -q -p no:cacheprovider test' --lines --jobs 4 --reruns 1 --confirm 2 --json` (with `tests/*` and `tests` for more-itertools) and saves the JSON in `results/`. `uv run python examples/real_commits.py --summary` prints the table from those files:
+It clones the four repositories into `DATA_DIR`, makes a Python 3.12 environment there with pinned pytest, hypothesis, pympler and cloudpickle (the attrs test dependencies), runs `uv run python examples/real_commits.py --data DATA_DIR --python DATA_DIR/venv312/bin/python --jobs J --out results/jobsJ` for J = 1 and 4, and prints the table and the hunk list below (`uv run python examples/real_commits.py --summary results/jobs1 results/jobs4` and `--hunks results/jobs4` print them again from the saved JSON). For each case `real_commits.py` runs `patchmin --base C^ --fix C --pin 'TESTS/*' --test-cmd 'PY -m pytest -q -p no:cacheprovider' --target ... --rest-cmd 'PY -m pytest -q -p no:cacheprovider TESTS' --lines --jobs J --reruns 1 --confirm 2 --json`. Two changes per library: attrs keeps its code under `src/` and imports tests with `--import-mode=importlib`, so both commands get `-o pythonpath=src`; and the clones are not installed, so the tests that read installed package metadata are left out of the rest command (`--ignore tests/test_packaging.py` for attrs, `--deselect toolz/tests/test_package.py::test_has_version` for toolz; they fail before and after each fix). The whole script took 25 min 14 s.
 
-| commit | hunks needed | lines needed | ddmin trials | test runs | cache hits | confirm | wall s |
-|---|---|---|---|---|---|---|---|
-| tabulate 8014ec6 | 1 of 3 | 1 of 4 | 8 | 22 | 0 | pass, pass | 14.3 |
-| tabulate 3aa568c | 1 of 3 | 5 of 5 | 24 | 42 | 6 | pass, pass | 12.3 |
-| more-itertools ce676d2 | 3 of 4 | 12 of 12 | 46 | 90 | 4 | pass, pass | 204.1 |
+| commit | jobs | hunks needed | lines needed | ddmin trials | test runs | cache hits | flaky | unresolved | confirm | wall s |
+|---|---|---|---|---|---|---|---|---|---|---|
+| tabulate 8014ec6 | 1 | 1 of 3 | 1 of 4 | 7 | 20 | 0 | 0 | 0 | pass, pass | 34.4 |
+| tabulate 8014ec6 | 4 | 1 of 3 | 1 of 4 | 8 | 22 | 0 | 0 | 0 | pass, pass | 38.0 |
+| tabulate 3aa568c | 1 | 1 of 3 | 5 of 5 | 24 | 42 | 6 | 0 | 0 | pass, pass | 46.2 |
+| tabulate 3aa568c | 4 | 1 of 3 | 5 of 5 | 24 | 42 | 6 | 0 | 0 | pass, pass | 30.5 |
+| more-itertools ce676d2 | 1 | 3 of 4 | 12 of 12 | 43 | 84 | 4 | 0 | 0 | pass, pass | 471.2 |
+| more-itertools ce676d2 | 4 | 3 of 4 | 12 of 12 | 46 | 90 | 4 | 0 | 0 | pass, pass | 437.8 |
+| toolz d2eba03 | 1 | 1 of 1 | 5 of 7 | 30 | 46 | 10 | 0 | 0 | pass, pass | 37.6 |
+| toolz d2eba03 | 4 | 1 of 1 | 5 of 7 | 38 | 62 | 10 | 0 | 0 | pass, pass | 22.8 |
+| attrs af9c510 | 1 | 1 of 2 | 2 of 4 | 16 | 26 | 6 | 0 | 0 | pass, pass | 86.5 |
+| attrs af9c510 | 4 | 1 of 2 | 2 of 4 | 20 | 34 | 6 | 0 | 0 | pass, pass | 72.0 |
+| attrs ce89f5d | 1 | 1 of 2 | 4 of 6 | 33 | 52 | 10 | 0 | 0 | pass, pass | 159.8 |
+| attrs ce89f5d | 4 | 1 of 2 | 4 of 6 | 36 | 58 | 10 | 0 | 0 | pass, pass | 76.4 |
 
-The files in `results/` and this table come from a rerun on 2026-11-06 after the fixes listed in the changelog (bytecode cleanup between trials, count-based hunk parsing, paired lines in the line pass, cache hit counting), with a 1-minute load average of 4.7 at the start; it gave the same verdicts, trial, run and cache-hit counts as the two earlier runs, whose wall times were 11.8, 10.2 and 180.5 s, then 13.7, 11.6 and 263.0 s. "Hunks needed" counts the hunks searched (pinned test hunks excluded). "Test runs" includes the two pre-checks, the reruns (`--reruns 1` doubles every fresh run) and the two confirmation runs. No subset was flaky, timed out or failed to apply.
+"Hunks needed" counts the hunks searched (pinned test hunks excluded). "Test runs" includes the two pre-checks, the reruns (`--reruns 1` doubles every fresh run) and the two confirmation runs. "Flaky" is the number of subsets whose rerun disagreed and "unresolved" the number of subsets that were flaky, timed out or did not apply; both are 0 in every run. The verdicts are the same with one and four jobs; four jobs run more subsets because a parallel round runs every chunk of the round, including those after the first passing one. The laptop was running other work: the 1-minute load average read at the end of each case was between 5.1 and 9.4 (saved as `load_average` in each JSON file), and the three tabulate and more-itertools cases took 2.1 to 3.3 times as long as in the earlier runs below, with the same verdicts; with four jobs they also gave the same trial, run and cache-hit counts as before, and with one job more-itertools again took 43 trials and 84 runs.
+
+Hunks and verdicts (`uv run python examples/real_commits.py --hunks results/jobs4`; the same for `results/jobs1`):
+
+```
+tabulate 8014ec6
+  hunk 0  not needed  docs        README.md:233  +2/-2
+  hunk 1  not needed  code        tabulate/__init__.py:522  +0/-10
+  hunk 2  needed      code        tabulate/__init__.py:719  +4/-0  lines 1 of 4 needed
+  hunks 3-6 pinned    test        test/test_output.py
+tabulate 3aa568c
+  hunk 0  not needed  docs        README.md:502  +4/-4
+  hunk 1  not needed  code        tabulate/__init__.py:278  +4/-2
+  hunk 2  needed      code        tabulate/__init__.py:293  +3/-2  lines 5 of 5 needed
+  hunks 3-5 pinned    test        test/test_output.py, test/test_regression.py
+more-itertools ce676d2
+  hunk 0  not needed  docs        docs/versions.rst:10  +1/-0
+  hunk 1  needed      code        more_itertools/more.py:1618  +3/-1  lines 4 of 4 needed
+  hunk 2  needed      code        more_itertools/more.py:1654  +3/-1  lines 4 of 4 needed
+  hunk 3  needed      code        more_itertools/more.py:1694  +3/-1  lines 4 of 4 needed
+  hunks 4-7 pinned    test        tests/test_more.py
+toolz d2eba03
+  hunk 0  needed      code        toolz/itertoolz.py:522  +6/-1  lines 5 of 7 needed
+  hunk 1  pinned      test        toolz/tests/test_itertoolz.py:255  +4/-0
+attrs af9c510
+  hunk 0  not needed  docs        changelog.d/1513.change.md:0  +1/-0
+  hunk 1  needed      code        src/attr/validators.py:79  +3/-1  lines 2 of 4 needed
+  hunk 2  pinned      test        tests/test_validators.py:97  +16/-0
+attrs ce89f5d
+  hunk 0  not needed  code        src/attr/exceptions.py:2  +0/-2
+  hunk 1  needed      code        src/attr/exceptions.py:16  +4/-2  lines 4 of 6 needed
+  hunk 2  pinned      test        tests/test_functional.py:264  +10/-3
+```
+
+(The pinned test hunks are folded into one line per case here; the script prints one line per hunk.) `:0` is the line number of a new file.
 
 What the minimal subsets show:
 
 - **tabulate 8014ec6.** The fix deletes the old `"github"` entry from the format table (10 lines) and adds, after the table, `_table_formats["github"] = _table_formats["pipe"]`. Only the added assignment is needed: it overrides the old entry, so the deletion is not needed for the tests, and the README hunk is not needed. The line pass keeps 1 of the 4 added lines; the two comment lines and the blank line go.
 - **tabulate 3aa568c.** Of the two hunks in `_asciidoc_row`, only the second is needed: it strips the line built for header and data rows, which is where the trailing whitespace came from. The first adds `.rstrip()` to the `[cols=...]` / `|====` line and to the above-line branch; that text ends in `|====`, so stripping it changes nothing the tests see, and the targets and the full suite pass without it. Every line of the needed hunk is needed.
 - **more-itertools ce676d2.** All three code hunks (`split_before`, `split_after`, `split_when`) are needed, each by its own target test, and every line inside them; only the changelog line in `docs/versions.rst` is not needed.
+- **toolz d2eba03.** The fix and a new doctest example in the docstring of `interpose` are two lines apart, so with three context lines they form one hunk, and the hunk search can only call it needed. The line pass separates them: the two added doctest lines (`>>> list(interpose("a", []))` and `[]`) are not needed. An added doctest is a test, not code: dropping it can only remove a check, so it is never needed for the tests to pass, whether or not the rest command runs doctests (this one does not; the toolz CI runs `pytest --doctest-modules`). The `try`/`except StopIteration` lines and the removed bare `next(inposed)` are.
+- **attrs af9c510.** The changelog fragment (a new file) is not needed. In `disabled()`, `prev = get_run_validators()` and `set_run_validators(prev)` are needed; the added `.. versionchanged::` docstring line is not, and neither is the removal of the old `set_run_validators(True)`: when that line stays, the `finally` block first sets `True` and then `prev`, which ends in the same state.
+- **attrs ce89f5d.** The first hunk removes `from typing import ClassVar`, which the new code no longer uses; it is not needed. In the second hunk, the new `__init__` that passes the message to `super().__init__` and the removal of the `args: ClassVar[...]` class attribute are needed; `self.msg = msg` and the removal of the class attribute `msg = "can't set attribute"` are not, because the kept class attribute already gives `e.value.msg` the same value.
 
-Parallel worktrees. The same command with `--jobs 1`, `4` and `8` (and `--out OTHER_DIR`), seven runs in all on the same laptop on 2026-11-06, while other work was running (the 1-minute load average at the start of each run is given; the laptop has 8 cores). Wall seconds:
+Across the six commits, the hunks and lines found not needed are of four kinds: release notes and documentation (two README hunks, a `docs/versions.rst` line, a `changelog.d` fragment); text in the code that the tests do not execute (a `.. versionchanged::` docstring line, two comment lines and a blank line) or that is itself a test (an added doctest example); cleanup that the fix made possible but does not depend on (an import left unused, an old dict entry and an old class attribute that the new code overrides); and changes whose effect the tests cannot see (`.rstrip()` on text that has no trailing whitespace, a removed `set_run_validators(True)` followed by the new call). The first two kinds are expected; the last two are where reading the minimal patch tells you something, and they also show what "not needed" means here: the tests pass without it, not that it should be dropped from the fix.
+
+Parallel worktrees. Earlier runs of the first three cases with `--jobs 1`, `4` and `8` (and `--out OTHER_DIR`), seven runs in all on the same laptop on 2026-11-06, while other work was running (the 1-minute load average at the start of each run is given). Wall seconds:
 
 | run | jobs | load | tabulate 8014ec6 | tabulate 3aa568c | more-itertools ce676d2 |
 |---|---|---|---|---|---|
@@ -181,11 +232,11 @@ Parallel worktrees. The same command with `--jobs 1`, `4` and `8` (and `--out OT
 | repeat | 8 | 3.7 | 12.1 | 10.3 | 179.5 |
 | repeat | 1 | 2.6 | 13.2 | 13.9 | 221.2 |
 | rerun | 4 | 30.6 | 13.7 | 11.6 | 263.0 |
-| rerun after fixes (table above) | 4 | 4.7 | 14.3 | 12.3 | 204.1 |
+| rerun after fixes | 4 | 4.7 | 14.3 | 12.3 | 204.1 |
 
-The repeats ran after the batching of chunks with complements was added and gave the same verdicts, trial and run counts as the first runs. With one job, more-itertools took 43 trials and 84 runs; with 4 or 8 jobs, 46 trials and 90 runs, because a parallel round runs every chunk of the round, including those after the first passing one. On this machine the noise between repeats (180.5 s and 275.8 s for the same command) is larger than the gain from parallel worktrees, so these runs do not show a clear speed-up. Two reasons in the search itself: with 4 hunks a round has at most 4 chunks, so at most 4 worktrees are busy, and every passing subset also runs the whole suite as the rest command (about 11 s for more-itertools) inside its own worktree.
+All of these gave the same verdicts as the table above. On this machine the noise between repeats (180.5 s and 275.8 s for the same command) is larger than the gain from parallel worktrees on the first three cases. In the main table, four jobs were faster for the two attrs commits (86.5 to 72.0 s and 159.8 to 76.4 s) and for toolz (37.6 to 22.8 s), slower for tabulate 8014ec6 (34.4 to 38.0 s), from one run each under a changing load, so they show at most that parallel worktrees can help when the rest command is a few seconds long. Two limits in the search itself: with few hunks a round has few chunks, so few worktrees are busy, and every passing subset also runs the whole suite as the rest command (about 11 s for more-itertools, 5 to 14 s for attrs) inside its own worktree.
 
-Data: the repositories were cloned from the source links on https://pypi.org/project/tabulate/ and https://pypi.org/project/more-itertools/ (the script resolves the clone URL from PyPI). Both are MIT-licensed; the licence was checked on the LICENSE file of each source repository on 2026-11-06. Nothing from them is stored in this repository except the short hunk headings and changed lines inside `results/*.json`.
+Data: tabulate and more-itertools were cloned from the source links on https://pypi.org/project/tabulate/ and https://pypi.org/project/more-itertools/, toolz from https://github.com/pytoolz/toolz (the `homepage` link on https://pypi.org/project/toolz/) and attrs from https://github.com/python-attrs/attrs (the `GitHub` link on https://pypi.org/project/attrs/); the script resolves each clone URL from PyPI. Licences, each checked on the repository's own licence file on 2026-11-06: tabulate and more-itertools MIT; attrs MIT (https://github.com/python-attrs/attrs/blob/main/LICENSE); toolz BSD 3-clause (https://github.com/pytoolz/toolz/blob/master/LICENSE.txt). Nothing from them is stored in this repository except the short hunk headings and changed lines inside `results/jobs1/*.json` and `results/jobs4/*.json`.
 
 ## Limitations
 
@@ -198,7 +249,10 @@ Data: the repositories were cloned from the source links on https://pypi.org/pro
 - Between trials in one worktree, tracked files are restored and untracked files deleted, but ignored files persist (build output, tool caches), except Python bytecode: ignored `__pycache__` directories and `.pyc` files are deleted, and test commands run with `PYTHONDONTWRITEBYTECODE=1`, because CPython would otherwise trust a `.pyc` left by a previous trial after a same-size edit made within the same second. `--clean-ignored` deletes every ignored file instead.
 - Kinds are heuristics read from the diff alone; a hunk wholly inside a long docstring with no fence in view is labelled `code`.
 - With `--jobs` above 1, test runs share the machine: tests that write to fixed paths outside the worktree, bind fixed ports or rely on timing can interfere with each other.
-- Wall times in this README were measured on a laptop that was running other work at the same time; repeats of the same command differ by tens of percent (see the results section).
+- Wall times in this README were measured on a laptop that was running other work at the same time; repeats of the same command differ by tens of percent, and by a factor of 2 to 3 between runs at different loads (see the results section).
+- Hunks come from `git diff` context: a fix line and an unrelated line (a docstring example, a comment) within a few lines of each other form one hunk, and only `--lines` or `--context 0` separates them (toolz `d2eba03` above).
+- "Not needed" is decided by the tests alone: a removed line whose effect a new line overrides, a cleanup the fix made possible and a change the tests do not observe are all reported as not needed (attrs `af9c510` and `ce89f5d`, tabulate `8014ec6` and `3aa568c` above). The minimal patch is a statement about the tests, not a better fix.
+- Tests that need the project installed (package metadata, entry points) fail in a plain clone; the real-commit runs leave them out of the rest command.
 - Renames: `--fix` diffs with `--no-renames`, so a renamed file is searched as a deletion plus an addition. A `--patch` file that contains a rename or copy, or a binary change, stops with an error before any test runs (make it with `git diff --no-renames`; binary changes are not supported at all). File entries with no hunks (a new or deleted empty file, a mode change) and the mode change of a file whose hunks are all dropped are applied in every trial and get no verdict. Process-group killing on timeout assumes a POSIX system.
 - The cache key covers the base commit id, the commands, the targets and the patch text, not the environment: untracked files in the repository, the interpreter and the installed packages are not part of it. Delete the `--cache` file after changing any of them. The repository path is not part of the key either; the same commit id names the same tracked content in any clone.
 - In the line pass, a hunk that deletes a whole file is all or nothing; its lines are reported as needed without a search. Lines are paired by position within a run of changed lines (k-th `-` with k-th `+`), not by content, so when a replacement block also inserts or deletes lines the pairing can place a kept old line away from the new line it corresponds to; the line pass may then keep an extra line.
