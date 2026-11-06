@@ -79,7 +79,8 @@ def ddmin(
             current = chunks[hit]
             n = 2
             continue
-        if len(chunks) > 2 or len(current) > len(chunks):
+        # With two chunks each complement is the other chunk, already tried.
+        if len(chunks) > 2:
             complements = [[x for x in current if x not in chunk] for chunk in chunks]
             complements = [c for c in complements if c]
             hit = first(complements)
