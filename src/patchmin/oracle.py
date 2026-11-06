@@ -16,6 +16,7 @@ from enum import Enum
 from pathlib import Path
 
 from .cache import RunCache, content_key
+from .diff import encode_patch
 
 
 class Outcome(str, Enum):
@@ -49,7 +50,8 @@ def run_command(
 
     The environment is ``os.environ`` with ``PYTHONDONTWRITEBYTECODE=1`` unless
     ``env`` is given, so Python test runs leave no bytecode behind for the
-    next trial.
+    next trial. Output that is not UTF-8 is decoded with replacement
+    characters; only its tail is kept for the report.
 
     On timeout the whole group is killed, so test runners that start worker
     processes do not leave them behind, and the return code is None. An
@@ -63,6 +65,8 @@ def run_command(
         stderr=subprocess.STDOUT,
         env=run_env() if env is None else env,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         start_new_session=True,
     )
     try:
@@ -215,9 +219,8 @@ class WorktreeOracle:
         flags = ["--unidiff-zero"] if self.unidiff_zero else []
         proc = subprocess.run(
             ["git", "-C", str(worktree), "apply", "--whitespace=nowarn", *flags, "-"],
-            input=patch_text,
+            input=encode_patch(patch_text),
             capture_output=True,
-            text=True,
         )
         return proc.returncode == 0
 

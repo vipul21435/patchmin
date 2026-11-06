@@ -11,7 +11,7 @@ from pathlib import Path
 from . import __version__
 from .cache import RunCache
 from .core import minimize_text, pinned_hunks
-from .diff import parse_patch
+from .diff import decode_patch, encode_patch, parse_patch
 from .oracle import WorktreeOracle, resolve_commit
 from .report import markdown_report
 from .targets import find_targets
@@ -21,10 +21,14 @@ def _diff_between(repo: Path, base: str, fix: str, context: int = 3) -> str:
     proc = subprocess.run(
         ["git", "-C", str(repo), "diff", "--no-color", f"-U{context}", base, fix],
         capture_output=True,
-        text=True,
         check=True,
     )
-    return proc.stdout
+    return decode_patch(proc.stdout)
+
+
+def _show(text: str) -> str:
+    """``text`` made printable: surrogate escapes become U+FFFD, no ``\\r``."""
+    return encode_patch(text).decode("utf-8", errors="replace").replace("\r", "")
 
 
 def _count(minimum: int):
@@ -157,7 +161,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return _run(args, repo)
     except subprocess.CalledProcessError as exc:
-        detail = (exc.stderr or "").strip().splitlines()
+        stderr = exc.stderr or ""
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", errors="replace")
+        detail = stderr.strip().splitlines()
         why = detail[-1] if detail else f"exit code {exc.returncode}"
         print(f"error: {' '.join(map(str, exc.cmd))} failed: {why}", file=sys.stderr)
         return 1
@@ -168,7 +175,7 @@ def main(argv: list[str] | None = None) -> int:
 
 def _run(args: argparse.Namespace, repo: Path) -> int:
     if args.patch is not None:
-        patch_text = args.patch.read_text()
+        patch_text = decode_patch(args.patch.read_bytes())
     else:
         patch_text = _diff_between(repo, args.base, args.fix, args.context)
     # Hunks without context lines (a -U0 diff) need git apply --unidiff-zero.
@@ -217,10 +224,10 @@ def _run(args: argparse.Namespace, repo: Path) -> int:
                 f"{v.status:<10}  hunk {v.index:<3} {v.kind:<10} {v.label:<32} "
                 f"+{v.added}/-{v.removed}  {v.heading}"
             )
-            print(line.rstrip())
+            print(_show(line.rstrip()))
         for lv in result.line_verdicts:
             mark = "needed    " if lv.needed else "not needed"
-            print(f"{mark}  hunk {lv.hunk:<3} line {lv.position:<3} {lv.text}")
+            print(_show(f"{mark}  hunk {lv.hunk:<3} line {lv.position:<3} {lv.text}"))
         if result.line_verdicts:
             kept = sum(1 for lv in result.line_verdicts if lv.needed)
             print(f"{kept} of {len(result.line_verdicts)} change lines needed")
@@ -242,9 +249,9 @@ def _run(args: argparse.Namespace, repo: Path) -> int:
             verdict = "confirmed" if result.confirmed else "NOT confirmed"
             print(f"minimal patch {verdict}: {', '.join(result.confirm_outcomes)}")
     if args.out is not None and not result.error:
-        args.out.write_text(result.minimal_patch)
+        args.out.write_bytes(encode_patch(result.minimal_patch))
     if args.markdown is not None:
-        args.markdown.write_text(markdown_report(result))
+        args.markdown.write_text(markdown_report(result), errors="surrogateescape")
     if result.error:
         return 1
     return 2 if result.confirmed is False else 0

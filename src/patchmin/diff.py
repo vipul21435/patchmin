@@ -63,6 +63,16 @@ class Patch:
         return [h for f in self.files for h in f.hunks]
 
 
+def decode_patch(data: bytes) -> str:
+    """Decode diff bytes as UTF-8, keeping other bytes as surrogate escapes."""
+    return data.decode("utf-8", errors="surrogateescape")
+
+
+def encode_patch(text: str) -> bytes:
+    """The inverse of :func:`decode_patch`."""
+    return text.encode("utf-8", errors="surrogateescape")
+
+
 def _strip_prefix(path: str) -> str:
     path = path.split("\t", 1)[0].strip()
     if path.startswith(("a/", "b/")):
@@ -78,13 +88,18 @@ def parse_patch(text: str) -> Patch:
     followed by a ``+++ `` line; a hunk takes exactly the lines its ``@@``
     header counts (plus ``\\ No newline`` markers), so text after it, such
     as a mail signature or the next file's header, is never read as part of
-    the hunk.
+    the hunk. Lines keep a trailing ``\\r``; read the diff with
+    :func:`decode_patch` so that bytes that are not UTF-8 survive.
     """
     patch = Patch()
     current: FilePatch | None = None
     index = 0
     pending_header: list[str] = []
-    lines = text.splitlines()
+    # Split on "\n" only: str.splitlines also splits on "\r", form feeds,
+    # U+2028 and other characters that can sit inside a line of a file.
+    lines = text.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
     i = 0
     while i < len(lines):
         raw = lines[i]

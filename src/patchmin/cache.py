@@ -13,7 +13,7 @@ def content_key(*parts: str) -> str:
     ``("ab", "c")`` and ``("a", "bc")`` get different keys."""
     h = hashlib.sha256()
     for p in parts:
-        h.update(p.encode("utf-8"))
+        h.update(p.encode("utf-8", errors="surrogateescape"))
         h.update(b"\0")
     return h.hexdigest()
 
