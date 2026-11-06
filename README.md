@@ -24,7 +24,7 @@ uv pip install -e ".[dev]"
 uv run pytest -q
 ```
 
-On 2026-11-06 `uv run pytest -q --cov=patchmin` ran 147 tests, offline, with 98 % line coverage of `src/patchmin` (the tests build their own git repositories in temporary folders). With a 1-minute load average of 2.4 on the laptop, that run took 36 s, and `uv run pytest -q` took 35 s right after it.
+On 2026-11-06 `uv run pytest -q --cov=patchmin` ran 165 tests, offline, with 98 % line coverage of `src/patchmin` (1101 statements, 27 missed; the tests build their own git repositories in temporary folders). With a 1-minute load average of 7.9 on the laptop, that run took 83 s, and `uv run pytest -q` took 85 s right after it; an earlier run of the suite at a load average of 2.4 took 36 s.
 
 ## Quickstart
 
