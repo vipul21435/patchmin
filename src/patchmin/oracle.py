@@ -5,7 +5,9 @@ from __future__ import annotations
 import shlex
 import subprocess
 import tempfile
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -44,7 +46,8 @@ class WorktreeOracle:
     ``reruns`` extra runs confirm a non-cached outcome; disagreement marks the
     result flaky and resolves to UNRESOLVED. ``rest_cmd``, when given, runs
     after a passing target run; a subset passes only when both commands do,
-    so the rest of the suite stays green.
+    so the rest of the suite stays green. ``jobs`` worktrees are created and
+    ``run_many`` runs that many subsets at once.
     """
 
     def __init__(
@@ -58,6 +61,7 @@ class WorktreeOracle:
         cache: RunCache | None = None,
         work_dir: Path | None = None,
         rest_cmd: str | None = None,
+        jobs: int = 1,
     ) -> None:
         self.repo = Path(repo)
         self.base = base
@@ -68,8 +72,14 @@ class WorktreeOracle:
         self.cache = cache if cache is not None else RunCache()
         self.work_dir = work_dir
         self.rest_cmd = rest_cmd
+        self.jobs = max(1, int(jobs))
         self.runs = 0
-        self._worktree: Path | None = None
+        self._worktrees: list[Path] = []
+        self._lock = threading.Lock()
+
+    @property
+    def _worktree(self) -> Path | None:
+        return self._worktrees[0] if self._worktrees else None
 
     def __enter__(self) -> WorktreeOracle:
         self.open()
@@ -79,42 +89,45 @@ class WorktreeOracle:
         self.close()
 
     def open(self) -> None:
-        if self._worktree is not None:
+        if self._worktrees:
             return
         root = self.work_dir or Path(tempfile.mkdtemp(prefix="patchmin-"))
         root.mkdir(parents=True, exist_ok=True)
-        self._worktree = root / "wt"
-        _git(self.repo, "worktree", "add", "--detach", str(self._worktree), self.base)
+        for i in range(self.jobs):
+            wt = root / f"wt{i}"
+            _git(self.repo, "worktree", "add", "--detach", str(wt), self.base)
+            self._worktrees.append(wt)
 
     def close(self) -> None:
-        if self._worktree is None:
-            return
-        _git(self.repo, "worktree", "remove", "--force", str(self._worktree), check=False)
-        self._worktree = None
+        for wt in self._worktrees:
+            _git(self.repo, "worktree", "remove", "--force", str(wt), check=False)
+        self._worktrees = []
 
-    def _reset(self) -> None:
-        assert self._worktree is not None
-        _git(self._worktree, "checkout", "--", ".")
-        _git(self._worktree, "clean", "-fdq")
+    @staticmethod
+    def _reset(worktree: Path) -> None:
+        _git(worktree, "checkout", "--", ".")
+        _git(worktree, "clean", "-fdq")
 
-    def _apply(self, patch_text: str) -> bool:
-        assert self._worktree is not None
+    @staticmethod
+    def _apply(worktree: Path, patch_text: str) -> bool:
         if not patch_text.strip():
             return True
         proc = subprocess.run(
-            ["git", "-C", str(self._worktree), "apply", "--whitespace=nowarn", "-"],
+            ["git", "-C", str(worktree), "apply", "--whitespace=nowarn", "-"],
             input=patch_text,
             capture_output=True,
             text=True,
         )
         return proc.returncode == 0
 
-    def _run_once(self, patch_text: str) -> RunResult:
-        assert self._worktree is not None
-        self.runs += 1
-        self._reset()
+    def _run_once(self, patch_text: str, worktree: Path | None = None) -> RunResult:
+        wt = worktree if worktree is not None else self._worktree
+        assert wt is not None
+        with self._lock:
+            self.runs += 1
+        self._reset(wt)
         t0 = time.monotonic()
-        if not self._apply(patch_text):
+        if not self._apply(wt, patch_text):
             return RunResult(Outcome.UNRESOLVED, time.monotonic() - t0, None)
         commands = [shlex.split(self.test_cmd) + self.targets]
         if self.rest_cmd:
@@ -125,7 +138,7 @@ class WorktreeOracle:
             try:
                 proc = subprocess.run(
                     cmd,
-                    cwd=self._worktree,
+                    cwd=wt,
                     capture_output=True,
                     text=True,
                     timeout=self.timeout,
@@ -139,36 +152,87 @@ class WorktreeOracle:
         outcome = Outcome.PASS if returncode == 0 else Outcome.FAIL
         return RunResult(outcome, time.monotonic() - t0, returncode, stdout_tail=tail)
 
-    def run(self, patch_text: str) -> RunResult:
-        key = content_key(
+    def _key(self, patch_text: str) -> str:
+        return content_key(
             self.base, self.test_cmd, " ".join(self.targets), self.rest_cmd or "", patch_text
         )
-        hit = self.cache.get(key)
+
+    def _cached(self, key: str) -> RunResult | None:
+        with self._lock:
+            hit = self.cache.get(key)
+        if hit is None:
+            return None
+        return RunResult(
+            Outcome(hit["outcome"]), hit["seconds"], hit.get("returncode"), cached=True,
+            flaky=hit.get("flaky", False),
+        )
+
+    def run(self, patch_text: str) -> RunResult:
+        """Run one subset: the cache first, then the first worktree."""
+        key = self._key(patch_text)
+        hit = self._cached(key)
         if hit is not None:
-            return RunResult(
-                Outcome(hit["outcome"]), hit["seconds"], hit.get("returncode"), cached=True,
-                flaky=hit.get("flaky", False),
-            )
-        if self._worktree is None:
+            return hit
+        if not self._worktrees:
             self.open()
-        first = self._run_once(patch_text)
+        return self._run_fresh(key, patch_text, self._worktrees[0])
+
+    def run_many(self, patch_texts: list[str]) -> list[RunResult]:
+        """Run several subsets, up to ``jobs`` at a time, one worktree each.
+
+        Equal texts in the batch run once. Cached outcomes are answered
+        without a run. Results come back in the order of the input.
+        """
+        if not self._worktrees:
+            self.open()
+        keys = [self._key(t) for t in patch_texts]
+        results: dict[str, RunResult] = {}
+        todo: list[tuple[str, str]] = []
+        for key, text in zip(keys, patch_texts, strict=True):
+            if key in results or any(k == key for k, _ in todo):
+                continue
+            hit = self._cached(key)
+            if hit is not None:
+                results[key] = hit
+            else:
+                todo.append((key, text))
+        if todo:
+            free: list[Path] = list(self._worktrees)
+
+            def work(item: tuple[str, str]) -> tuple[str, RunResult]:
+                with self._lock:
+                    wt = free.pop()
+                try:
+                    return item[0], self._run_fresh(item[0], item[1], wt)
+                finally:
+                    with self._lock:
+                        free.append(wt)
+
+            with ThreadPoolExecutor(max_workers=len(self._worktrees)) as pool:
+                for key, result in pool.map(work, todo):
+                    results[key] = result
+        return [results[k] for k in keys]
+
+    def _run_fresh(self, key: str, patch_text: str, worktree: Path) -> RunResult:
+        first = self._run_once(patch_text, worktree)
         result = first
         if first.outcome is not Outcome.UNRESOLVED:
             for _ in range(self.reruns):
-                again = self._run_once(patch_text)
+                again = self._run_once(patch_text, worktree)
                 if again.outcome is not first.outcome:
                     result = RunResult(
                         Outcome.UNRESOLVED, first.seconds + again.seconds, None, flaky=True,
                         stdout_tail=again.stdout_tail,
                     )
                     break
-        self.cache.put(
-            key,
-            {
-                "outcome": result.outcome.value,
-                "seconds": result.seconds,
-                "returncode": result.returncode,
-                "flaky": result.flaky,
-            },
-        )
+        with self._lock:
+            self.cache.put(
+                key,
+                {
+                    "outcome": result.outcome.value,
+                    "seconds": result.seconds,
+                    "returncode": result.returncode,
+                    "flaky": result.flaky,
+                },
+            )
         return result

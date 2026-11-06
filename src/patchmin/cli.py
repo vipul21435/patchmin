@@ -44,8 +44,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="command for the rest of the suite; it must also pass for a subset to count",
     )
+    p.add_argument(
+        "--pin",
+        action="append",
+        default=[],
+        metavar="GLOB",
+        help="path pattern whose hunks are always applied and never searched (repeatable)",
+    )
     p.add_argument("--timeout", type=float, default=600.0, help="seconds per test run")
     p.add_argument("--reruns", type=int, default=0, help="extra runs to confirm each outcome")
+    p.add_argument("--jobs", type=int, default=1, help="git worktrees to run in parallel")
     p.add_argument("--cache", type=Path, default=None, help="JSON file for the run cache")
     p.add_argument(
         "--lines", action="store_true", help="also minimise the change lines inside needed hunks"
@@ -72,24 +80,29 @@ def main(argv: list[str] | None = None) -> int:
         reruns=args.reruns,
         cache=cache,
         rest_cmd=args.rest_cmd,
+        jobs=args.jobs,
     ) as oracle:
-        result = minimize_text(patch_text, oracle, lines=args.lines)
+        result = minimize_text(patch_text, oracle, lines=args.lines, pin=args.pin)
     if args.json:
         print(json.dumps(result.to_dict(), indent=2))
     else:
         if result.error:
             print(f"error: {result.error}")
         for v in result.verdicts:
-            mark = "needed    " if v.needed else "not needed"
-            print(f"{mark}  hunk {v.index:<3} {v.label:<32} +{v.added}/-{v.removed}  {v.heading}")
+            print(
+                f"{v.status:<10}  hunk {v.index:<3} {v.kind:<10} {v.label:<32} "
+                f"+{v.added}/-{v.removed}  {v.heading}"
+            )
         for lv in result.line_verdicts:
             mark = "needed    " if lv.needed else "not needed"
             print(f"{mark}  hunk {lv.hunk:<3} line {lv.position:<3} {lv.text}")
         if result.line_verdicts:
             kept = sum(1 for lv in result.line_verdicts if lv.needed)
             print(f"{kept} of {len(result.line_verdicts)} change lines needed")
+        searched = len(result.verdicts) - len(result.pinned)
+        pinned = f", {len(result.pinned)} pinned" if result.pinned else ""
         print(
-            f"{len(result.needed)} of {len(result.verdicts)} hunks needed; "
+            f"{len(result.needed)} of {searched} hunks needed{pinned}; "
             f"{result.runs} test runs ({result.cached_hits} cache hits, "
             f"{result.flaky_runs} flaky) in {result.seconds:.1f}s"
         )

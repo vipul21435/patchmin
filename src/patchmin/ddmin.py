@@ -39,10 +39,17 @@ def ddmin(
     items: Sequence[T],
     interesting: Callable[[list[T]], bool],
     trace: DdminTrace | None = None,
+    evaluate: Callable[[list[list[T]]], list[bool]] | None = None,
 ) -> list[T]:
     """Return a 1-minimal subsequence of ``items`` for which ``interesting`` holds.
 
     ``interesting(list(items))`` is assumed to be True; the caller checks that.
+
+    ``evaluate``, when given, takes every candidate subset of one round at
+    once and returns one boolean per subset; it is how a caller runs the
+    candidates in parallel. The first interesting subset in order is chosen,
+    so the result is the same as the sequential search; the sequential search
+    stops at the first interesting subset and may run fewer tests.
     """
     trace = trace if trace is not None else DdminTrace()
     current = list(items)
@@ -53,28 +60,33 @@ def ddmin(
         trace.tried.append((len(subset), result))
         return result
 
+    def first(subsets: list[list[T]]) -> int | None:
+        if evaluate is None:
+            for i, subset in enumerate(subsets):
+                if test(subset):
+                    return i
+            return None
+        results = [bool(r) for r in evaluate(subsets)]
+        trace.tests += len(subsets)
+        trace.tried.extend((len(s), r) for s, r in zip(subsets, results, strict=True))
+        return next((i for i, r in enumerate(results) if r), None)
+
     n = 2
     while len(current) >= 2:
         chunks = _split(current, n)
-        reduced = False
-        for chunk in chunks:
-            if test(chunk):
-                current = chunk
-                n = 2
-                reduced = True
-                break
-        if reduced:
+        hit = first(chunks)
+        if hit is not None:
+            current = chunks[hit]
+            n = 2
             continue
         if len(chunks) > 2 or len(current) > len(chunks):
-            for chunk in chunks:
-                complement = [x for x in current if x not in chunk]
-                if complement and test(complement):
-                    current = complement
-                    n = max(n - 1, 2)
-                    reduced = True
-                    break
-        if reduced:
-            continue
+            complements = [[x for x in current if x not in chunk] for chunk in chunks]
+            complements = [c for c in complements if c]
+            hit = first(complements)
+            if hit is not None:
+                current = complements[hit]
+                n = max(n - 1, 2)
+                continue
         if n >= len(current):
             break
         n = min(n * 2, len(current))

@@ -192,3 +192,82 @@ def with_hunk(patch: Patch, replacement: Hunk) -> Patch:
         hunks = [replacement if h.index == replacement.index else h for h in fp.hunks]
         files.append(FilePatch(fp.old_path, fp.new_path, list(fp.header), hunks))
     return Patch(files)
+
+
+_DOC_SUFFIXES = (".md", ".rst", ".txt", ".adoc")
+_PY_COMMENT = re.compile(r"^\s*#")
+_DOCSTRING_FENCE = re.compile(r'^\s*[rRbBuU]{0,2}("""|\'\'\')')
+
+
+def _is_test_path(path: str) -> bool:
+    parts = path.split("/")
+    name = parts[-1]
+    return (
+        any(p in ("test", "tests", "testing") for p in parts[:-1])
+        or name.startswith("test_")
+        or name.endswith(("_test.py", "_tests.py", ".test.js", ".test.ts", ".spec.js", ".spec.ts"))
+    )
+
+
+def classify_hunk(hunk: Hunk) -> str:
+    """A rough label for what a hunk changes: ``docs``, ``test``, ``whitespace``,
+    ``comment`` or ``code``.
+
+    The label is a hint for reading the report and plays no part in the
+    search. ``docs`` is a hunk in a documentation file; ``test`` a hunk in a
+    test file; ``whitespace`` a hunk whose added and removed lines are equal
+    once whitespace is removed; ``comment`` a hunk whose changed lines are
+    all ``#`` comments or docstring fences; anything else is ``code``.
+    """
+    path = hunk.new_path or hunk.old_path
+    if path.endswith(_DOC_SUFFIXES) or path.startswith(("docs/", "doc/")):
+        return "docs"
+    if _is_test_path(path):
+        return "test"
+    added = [ln[1:] for ln in hunk.lines if ln.startswith("+")]
+    removed = [ln[1:] for ln in hunk.lines if ln.startswith("-")]
+    squash = [re.sub(r"\s+", "", ln) for ln in added]
+    squash_removed = [re.sub(r"\s+", "", ln) for ln in removed]
+    if squash == squash_removed and (added or removed):
+        return "whitespace"
+    changed = [ln for ln in added + removed if ln.strip()]
+    if changed and all(_PY_COMMENT.match(ln) or _DOCSTRING_FENCE.match(ln) for ln in changed):
+        return "comment"
+    if changed and _docstring_only(hunk):
+        return "comment"
+    return "code"
+
+
+def _docstring_only(hunk: Hunk) -> bool:
+    """True when every changed line of ``hunk`` sits inside a docstring.
+
+    Tracks triple-quote fences from the top of the hunk; a changed line is
+    inside a docstring when an odd number of fences precede it or it is a
+    fence itself. Context before the hunk is unknown, so a hunk that starts
+    inside a docstring is not recognised.
+    """
+    inside = False
+    for ln in hunk.lines:
+        tag, text = ln[:1], ln[1:]
+        fences = text.count('"""') + text.count("'''")
+        is_fence = fences % 2 == 1
+        if tag in ("+", "-") and text.strip() and not (inside or is_fence):
+            return False
+        if is_fence:
+            inside = not inside
+    return True
+
+
+def matches_any(path: str, patterns: list[str]) -> bool:
+    """fnmatch ``path`` against ``patterns``; a pattern with no slash also
+    matches any path component."""
+    from fnmatch import fnmatch
+
+    for pat in patterns:
+        if fnmatch(path, pat):
+            return True
+        if "/" not in pat and any(fnmatch(part, pat) for part in path.split("/")):
+            return True
+        if pat.endswith("/") and path.startswith(pat):
+            return True
+    return False
