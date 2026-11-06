@@ -173,3 +173,38 @@ def test_batch_sends_chunks_and_complements_together():
     sizes.clear()
     ddmin(list(range(8)), lambda s: len(s) == 8, evaluate=evaluate, batch=6)
     assert sizes == [2, 6, 2, 8, 8]
+
+
+def test_repeated_items_are_kept_apart():
+    items = ["x", "z", "x", "y", "x", "w"]
+
+    def interesting(s):
+        return s.count("x") >= 2 and "y" in s
+
+    result = ddmin(items, interesting)
+    assert interesting(result)
+    assert sorted(result) == ["x", "x", "y"]
+    for i in range(len(result)):
+        assert not interesting(result[:i] + result[i + 1 :])
+
+
+def test_one_minimal_on_inputs_with_repeats():
+    # Items drawn from a small alphabet; the oracle asks for a multiset.
+    rng = random.Random(23)
+    for _ in range(300):
+        n = rng.randint(1, 14)
+        items = [rng.choice("abc") for _ in range(n)]
+        need = {c: rng.randint(0, items.count(c)) for c in "abc"}
+        if not any(need.values()):
+            # ddmin assumes the empty subset is not interesting.
+            need[items[0]] = 1
+
+        def interesting(s, need=need):
+            return all(s.count(c) >= k for c, k in need.items())
+
+        for batch in (0, 4):
+            evaluate = (lambda subs, f=interesting: [f(x) for x in subs]) if batch else None
+            result = ddmin(items, interesting, evaluate=evaluate, batch=batch)
+            assert interesting(result)
+            for i in range(len(result)):
+                assert not interesting(result[:i] + result[i + 1 :]), (items, need, result)

@@ -4,7 +4,8 @@ The algorithm follows Zeller and Hildebrandt, "Simplifying and Isolating
 Failure-Inducing Input" (IEEE TSE 2002). ``interesting(subset)`` must return
 True when the subset still has the property of interest (here: the target
 tests pass). The result is 1-minimal: removing any single item makes the
-property disappear.
+property disappear. The search runs over positions, so items may repeat:
+equal items at different positions are distinct members of the input.
 """
 
 from __future__ import annotations
@@ -59,21 +60,31 @@ def ddmin(
     complement, so the result does not change.
     """
     trace = trace if trace is not None else DdminTrace()
-    current = list(items)
+    values = list(items)
+    # Work on positions and hand the callbacks the items at those positions;
+    # building complements from positions keeps repeated items apart.
+    current = list(range(len(values)))
 
-    def test(subset: list[T]) -> bool:
+    def pick(subset: list[int]) -> list[T]:
+        return [values[i] for i in subset]
+
+    def run_all(subsets: list[list[int]]) -> list[bool]:
+        assert evaluate is not None
+        return [bool(r) for r in evaluate([pick(s) for s in subsets])]
+
+    def test(subset: list[int]) -> bool:
         trace.tests += 1
-        result = bool(interesting(subset))
+        result = bool(interesting(pick(subset)))
         trace.tried.append((len(subset), result))
         return result
 
-    def first(subsets: list[list[T]]) -> int | None:
+    def first(subsets: list[list[int]]) -> int | None:
         if evaluate is None:
             for i, subset in enumerate(subsets):
                 if test(subset):
                     return i
             return None
-        results = [bool(r) for r in evaluate(subsets)]
+        results = run_all(subsets)
         trace.tests += len(subsets)
         trace.tried.extend((len(s), r) for s, r in zip(subsets, results, strict=True))
         return next((i for i, r in enumerate(results) if r), None)
@@ -82,16 +93,17 @@ def ddmin(
     while len(current) >= 2:
         chunks = _split(current, n)
         # With two chunks each complement is the other chunk, already tried.
-        complements: list[list[T]] = []
+        complements: list[list[int]] = []
         if len(chunks) > 2:
-            complements = [[x for x in current if x not in chunk] for chunk in chunks]
+            sets = [set(chunk) for chunk in chunks]
+            complements = [[x for x in current if x not in c] for c in sets]
             complements = [c for c in complements if c]
         # Free workers (batch minus the chunks) try the first complements
         # speculatively in the same call; the rest follow if needed.
         extra = complements[: max(0, batch - len(chunks))] if evaluate is not None else []
         if extra:
             sent = chunks + extra
-            results = [bool(r) for r in evaluate(sent)]
+            results = run_all(sent)
             trace.tests += len(results)
             trace.tried.extend((len(s), r) for s, r in zip(sent, results, strict=True))
             hit = next((i for i, r in enumerate(results[: len(chunks)]) if r), None)
@@ -117,4 +129,4 @@ def ddmin(
         if n >= len(current):
             break
         n = min(n * 2, len(current))
-    return current
+    return pick(current)
