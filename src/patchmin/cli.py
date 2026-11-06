@@ -19,8 +19,13 @@ from .targets import find_targets
 
 
 def _diff_between(repo: Path, base: str, fix: str, context: int = 3) -> str:
+    # Fix the output format whatever the user's git config says: no external
+    # diff or textconv, and a/ and b/ prefixes for git apply -p1.
     proc = subprocess.run(
-        ["git", "-C", str(repo), "diff", "--no-color", f"-U{context}", base, fix],
+        [
+            "git", "-C", str(repo), "diff", "--no-color", "--no-ext-diff", "--no-textconv",
+            "--src-prefix=a/", "--dst-prefix=b/", f"-U{context}", base, fix,
+        ],
         capture_output=True,
         check=True,
     )
