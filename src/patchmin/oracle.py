@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shlex
 import shutil
@@ -261,7 +262,7 @@ class WorktreeOracle:
 
     def _key(self, patch_text: str) -> str:
         return content_key(
-            self.base_commit, self.test_cmd, " ".join(self.targets), self.rest_cmd or "",
+            self.base_commit, self.test_cmd, json.dumps(self.targets), self.rest_cmd or "",
             patch_text,
         )
 

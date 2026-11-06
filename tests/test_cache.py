@@ -115,3 +115,12 @@ def test_rejected_cache_entries_are_not_counted_as_hits(fixture_repo, tmp_path):
     assert not result.cached
     assert (cache.hits, cache.misses) == (0, 1)
 
+
+
+def test_targets_with_spaces_get_distinct_keys(fixture_repo):
+    from patchmin.oracle import WorktreeOracle
+
+    args = (fixture_repo["repo"], fixture_repo["base"], fixture_repo["test_cmd"])
+    one = WorktreeOracle(*args, targets=["t[a b]"])
+    two = WorktreeOracle(*args, targets=["t[a", "b]"])
+    assert one._key("") != two._key("")
