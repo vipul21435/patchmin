@@ -62,7 +62,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--base", required=True, help="commit the fix applies to")
     src = p.add_mutually_exclusive_group(required=True)
     src.add_argument("--fix", help="commit containing the fix; the patch is git diff BASE FIX")
-    src.add_argument("--patch", type=Path, help="unified diff file to minimise")
+    src.add_argument(
+        "--patch",
+        type=Path,
+        help="unified diff file to minimise (git diff, git format-patch or diff -u output)",
+    )
     p.add_argument("--test-cmd", required=True, help="command that runs the tests")
     p.add_argument(
         "--target", action="append", default=[], help="target test id appended to the command"

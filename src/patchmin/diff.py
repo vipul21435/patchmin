@@ -71,56 +71,78 @@ def _strip_prefix(path: str) -> str:
 
 
 def parse_patch(text: str) -> Patch:
-    """Parse a unified diff (as produced by ``git diff``) into a Patch."""
+    """Parse a unified diff into a Patch.
+
+    Accepts ``git diff`` output, ``git format-patch`` mails and plain
+    ``diff -u``/``diff -ru`` output. A file starts at a ``--- `` line
+    followed by a ``+++ `` line; a hunk takes exactly the lines its ``@@``
+    header counts (plus ``\\ No newline`` markers), so text after it, such
+    as a mail signature or the next file's header, is never read as part of
+    the hunk.
+    """
     patch = Patch()
     current: FilePatch | None = None
-    hunk: Hunk | None = None
     index = 0
-    old_path = new_path = ""
     pending_header: list[str] = []
-
-    for raw in text.splitlines():
+    lines = text.splitlines()
+    i = 0
+    while i < len(lines):
+        raw = lines[i]
+        i += 1
         if raw.startswith("diff --git "):
             current = None
-            hunk = None
-            old_path = new_path = ""
             pending_header = [raw]
             continue
-        if raw.startswith("--- ") and (hunk is None or current is None):
-            old_path = _strip_prefix(raw[4:])
-            pending_header.append(raw)
-            hunk = None
-            continue
-        if raw.startswith("+++ ") and hunk is None:
-            new_path = _strip_prefix(raw[4:])
-            pending_header.append(raw)
-            current = FilePatch(old_path=old_path, new_path=new_path, header=list(pending_header))
+        if raw.startswith("--- ") and i < len(lines) and lines[i].startswith("+++ "):
+            plus = lines[i]
+            i += 1
+            current = FilePatch(
+                old_path=_strip_prefix(raw[4:]),
+                new_path=_strip_prefix(plus[4:]),
+                header=[*pending_header, raw, plus],
+            )
             patch.files.append(current)
+            pending_header = []
             continue
         m = _HUNK_RE.match(raw)
-        if m and current is not None:
-            hunk = Hunk(
-                index=index,
-                old_path=current.old_path,
-                new_path=current.new_path,
-                old_start=int(m.group(1)),
-                old_count=int(m.group(2) or 1),
-                new_start=int(m.group(3)),
-                new_count=int(m.group(4) or 1),
-                heading=m.group(5),
-            )
-            index += 1
-            current.hunks.append(hunk)
-            continue
-        if hunk is not None and raw[:1] in (" ", "+", "-", "\\"):
-            hunk.lines.append(raw)
-            continue
-        if hunk is not None and raw == "":
-            # A context line whose text is empty, written without the space.
-            hunk.lines.append(" ")
-            continue
-        if hunk is None:
+        if m is None or current is None:
             pending_header.append(raw)
+            continue
+        hunk = Hunk(
+            index=index,
+            old_path=current.old_path,
+            new_path=current.new_path,
+            old_start=int(m.group(1)),
+            old_count=int(m.group(2) or 1),
+            new_start=int(m.group(3)),
+            new_count=int(m.group(4) or 1),
+            heading=m.group(5),
+        )
+        index += 1
+        current.hunks.append(hunk)
+        old_left, new_left = hunk.old_count, hunk.new_count
+        while i < len(lines):
+            ln = lines[i]
+            tag = ln[:1]
+            if tag == "\\" and hunk.lines:
+                hunk.lines.append(ln)
+            elif old_left == 0 and new_left == 0:
+                break
+            elif tag == "-" and old_left > 0:
+                hunk.lines.append(ln)
+                old_left -= 1
+            elif tag == "+" and new_left > 0:
+                hunk.lines.append(ln)
+                new_left -= 1
+            elif tag in (" ", "") and old_left > 0 and new_left > 0:
+                # An empty line is a context line whose text is empty,
+                # written without the space.
+                hunk.lines.append(ln or " ")
+                old_left -= 1
+                new_left -= 1
+            else:
+                break
+            i += 1
     return patch
 
 

@@ -53,7 +53,7 @@ patchmin --repo PATH --base COMMIT (--fix COMMIT | --patch FILE) --test-cmd CMD
 
 | Option | Meaning |
 |---|---|
-| `--fix` / `--patch` | the fix as a commit (the patch is `git diff BASE FIX`) or as a unified diff file |
+| `--fix` / `--patch` | the fix as a commit (the patch is `git diff BASE FIX`) or as a unified diff file (`git diff`, `git format-patch` or `diff -u`/`diff -ru` output) |
 | `--context N` | context lines for `git diff` with `--fix` (default 3); `0` gives one hunk per run of adjacent changed lines, applied with `git apply --unidiff-zero` |
 | `--test-cmd` | the test command; `--target` values are appended to it |
 | `--find-targets` | pytest only: run the tests before and after the fix and use the tests that fail before and pass after as the targets |
