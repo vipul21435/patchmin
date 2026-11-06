@@ -80,3 +80,14 @@ def test_run_many_runs_duplicates_once_and_keeps_order(fixture_repo):
         assert oracle.runs == 1
         assert [r.outcome for r in results] == [Outcome.FAIL] * 3
         assert oracle.run_many([""])[0].cached
+
+
+def test_missing_program_is_unresolved_and_not_cached(fixture_repo):
+    cmd = "patchmin-no-such-program --flag"
+    with WorktreeOracle(fixture_repo["repo"], fixture_repo["base"], cmd) as oracle:
+        first = oracle.run("")
+        again = oracle.run("")
+        executed = oracle.execute("", ["x"])
+    assert (first.outcome, first.reason) == (Outcome.UNRESOLVED, "command not found")
+    assert not again.cached and oracle.cache.data == {}
+    assert executed.reason == "command not found"

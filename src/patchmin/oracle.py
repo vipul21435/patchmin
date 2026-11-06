@@ -33,14 +33,17 @@ class RunResult:
     flaky: bool = False
     stdout_tail: str = ""
     reason: str = ""
-    """Why a run is unresolved: ``apply``, ``timeout`` or ``flaky``; empty otherwise."""
+    """Why a run is unresolved: ``apply``, ``timeout``, ``flaky`` or ``command not found``;
+    empty otherwise."""
 
 
 def run_command(cmd: list[str], cwd: Path, timeout: float) -> tuple[int | None, str]:
     """Run ``cmd`` in its own process group and return ``(returncode, output)``.
 
     On timeout the whole group is killed, so test runners that start worker
-    processes do not leave them behind, and the return code is None.
+    processes do not leave them behind, and the return code is None. An
+    ``OSError`` (the program does not exist or is not executable) is raised
+    to the caller.
     """
     proc = subprocess.Popen(
         cmd,
@@ -60,6 +63,13 @@ def run_command(cmd: list[str], cwd: Path, timeout: float) -> tuple[int | None, 
         out, _ = proc.communicate()
         return None, out or ""
     return proc.returncode, out or ""
+
+
+NOT_FOUND = "command not found"
+
+
+def _not_found(exc: OSError, seconds: float) -> RunResult:
+    return RunResult(Outcome.UNRESOLVED, seconds, None, stdout_tail=str(exc), reason=NOT_FOUND)
 
 
 def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess:
@@ -191,7 +201,10 @@ class WorktreeOracle:
         tail = ""
         returncode: int | None = 0
         for cmd in commands:
-            returncode, out = run_command(cmd, wt, self.timeout)
+            try:
+                returncode, out = run_command(cmd, wt, self.timeout)
+            except OSError as exc:
+                return _not_found(exc, time.monotonic() - t0)
             tail = out[-2000:]
             if returncode is None:
                 return RunResult(
@@ -258,7 +271,10 @@ class WorktreeOracle:
         t0 = time.monotonic()
         if not self._apply(wt, patch_text):
             return RunResult(Outcome.UNRESOLVED, time.monotonic() - t0, None, reason="apply")
-        code, out = run_command(shlex.split(self.test_cmd) + extra_args, wt, self.timeout)
+        try:
+            code, out = run_command(shlex.split(self.test_cmd) + extra_args, wt, self.timeout)
+        except OSError as exc:
+            return _not_found(exc, time.monotonic() - t0)
         seconds = time.monotonic() - t0
         if code is None:
             return RunResult(Outcome.UNRESOLVED, seconds, None, stdout_tail=out[-2000:],
@@ -314,6 +330,9 @@ class WorktreeOracle:
                         stdout_tail=again.stdout_tail, reason="flaky",
                     )
                     break
+        if result.reason == NOT_FOUND:
+            # A missing program says nothing about the subset: never cache it.
+            return result
         with self._lock:
             self.cache.put(
                 key,

@@ -256,3 +256,13 @@ def test_markdown_escapes_pipes():
     from patchmin.report import _cell
 
     assert _cell(" a|b `c` ") == "a\\|b 'c'"
+
+
+def test_precheck_error_names_a_missing_program(fixture_repo):
+    with WorktreeOracle(
+        fixture_repo["repo"], fixture_repo["base"], "patchmin-no-such-program"
+    ) as oracle:
+        result = minimize_text(_diff(fixture_repo), oracle)
+    assert result.error == (
+        "full patch does not make the target tests pass (unresolved: command not found)"
+    )

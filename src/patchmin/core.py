@@ -134,6 +134,10 @@ class _Search:
             self.unresolved.setdefault(run.reason, set()).add(text)
         return run.outcome is Outcome.PASS
 
+    def reason_for(self, text: str) -> str:
+        """The reason ``text`` was left unresolved, or an empty string."""
+        return next((r for r, texts in sorted(self.unresolved.items()) if text in texts), "")
+
     def passes(self, text: str) -> bool:
         return self._note(text, self.oracle.run(text))
 
@@ -194,8 +198,11 @@ def minimize_patch(
         return finish([], trace, "patch has no hunks")
     if not free:
         return finish([], trace, "every hunk is pinned; nothing to search")
-    if not state.passes(render(free)):
-        return finish([], trace, "full patch does not make the target tests pass")
+    full = render(free)
+    if not state.passes(full):
+        why = state.reason_for(full)
+        detail = f" (unresolved: {why})" if why else ""
+        return finish([], trace, f"full patch does not make the target tests pass{detail}")
     if state.passes(render([])):
         what = "with the pinned hunks alone" if pinned else "without the patch"
         return finish([], trace, f"target tests already pass {what}")
