@@ -141,3 +141,14 @@ def test_reruns_flag_flaky_outcome(fixture_repo, tmp_path):
         result = oracle.run("")
     assert result.flaky is True
     assert result.outcome is Outcome.UNRESOLVED
+
+
+def test_module_entry_point_prints_version():
+    import subprocess
+    import sys
+
+    proc = subprocess.run(
+        [sys.executable, "-m", "patchmin", "--version"], capture_output=True, text=True
+    )
+    assert proc.returncode == 0
+    assert proc.stdout.strip() == "patchmin 0.1.0"
