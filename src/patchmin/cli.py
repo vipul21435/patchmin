@@ -39,6 +39,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--target", action="append", default=[], help="target test id appended to the command"
     )
+    p.add_argument(
+        "--rest-cmd",
+        default=None,
+        help="command for the rest of the suite; it must also pass for a subset to count",
+    )
     p.add_argument("--timeout", type=float, default=600.0, help="seconds per test run")
     p.add_argument("--reruns", type=int, default=0, help="extra runs to confirm each outcome")
     p.add_argument("--cache", type=Path, default=None, help="JSON file for the run cache")
@@ -63,6 +68,7 @@ def main(argv: list[str] | None = None) -> int:
         timeout=args.timeout,
         reruns=args.reruns,
         cache=cache,
+        rest_cmd=args.rest_cmd,
     ) as oracle:
         result = minimize_text(patch_text, oracle)
     if args.json:

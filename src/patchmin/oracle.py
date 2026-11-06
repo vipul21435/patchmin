@@ -42,7 +42,9 @@ class WorktreeOracle:
     passes when the return code is 0, fails on any other return code, and is
     unresolved when the patch does not apply or the command times out.
     ``reruns`` extra runs confirm a non-cached outcome; disagreement marks the
-    result flaky and resolves to UNRESOLVED.
+    result flaky and resolves to UNRESOLVED. ``rest_cmd``, when given, runs
+    after a passing target run; a subset passes only when both commands do,
+    so the rest of the suite stays green.
     """
 
     def __init__(
@@ -55,6 +57,7 @@ class WorktreeOracle:
         reruns: int = 0,
         cache: RunCache | None = None,
         work_dir: Path | None = None,
+        rest_cmd: str | None = None,
     ) -> None:
         self.repo = Path(repo)
         self.base = base
@@ -64,6 +67,7 @@ class WorktreeOracle:
         self.reruns = reruns
         self.cache = cache if cache is not None else RunCache()
         self.work_dir = work_dir
+        self.rest_cmd = rest_cmd
         self.runs = 0
         self._worktree: Path | None = None
 
@@ -112,23 +116,33 @@ class WorktreeOracle:
         t0 = time.monotonic()
         if not self._apply(patch_text):
             return RunResult(Outcome.UNRESOLVED, time.monotonic() - t0, None)
-        cmd = shlex.split(self.test_cmd) + self.targets
-        try:
-            proc = subprocess.run(
-                cmd,
-                cwd=self._worktree,
-                capture_output=True,
-                text=True,
-                timeout=self.timeout,
-            )
-        except subprocess.TimeoutExpired:
-            return RunResult(Outcome.UNRESOLVED, time.monotonic() - t0, None)
-        outcome = Outcome.PASS if proc.returncode == 0 else Outcome.FAIL
-        tail = (proc.stdout + proc.stderr)[-2000:]
-        return RunResult(outcome, time.monotonic() - t0, proc.returncode, stdout_tail=tail)
+        commands = [shlex.split(self.test_cmd) + self.targets]
+        if self.rest_cmd:
+            commands.append(shlex.split(self.rest_cmd))
+        tail = ""
+        returncode = 0
+        for cmd in commands:
+            try:
+                proc = subprocess.run(
+                    cmd,
+                    cwd=self._worktree,
+                    capture_output=True,
+                    text=True,
+                    timeout=self.timeout,
+                )
+            except subprocess.TimeoutExpired:
+                return RunResult(Outcome.UNRESOLVED, time.monotonic() - t0, None)
+            tail = (proc.stdout + proc.stderr)[-2000:]
+            returncode = proc.returncode
+            if returncode != 0:
+                break
+        outcome = Outcome.PASS if returncode == 0 else Outcome.FAIL
+        return RunResult(outcome, time.monotonic() - t0, returncode, stdout_tail=tail)
 
     def run(self, patch_text: str) -> RunResult:
-        key = content_key(self.base, self.test_cmd, " ".join(self.targets), patch_text)
+        key = content_key(
+            self.base, self.test_cmd, " ".join(self.targets), self.rest_cmd or "", patch_text
+        )
         hit = self.cache.get(key)
         if hit is not None:
             return RunResult(

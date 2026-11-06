@@ -109,3 +109,35 @@ def test_cli_text_output(fixture_repo, capsys):
     text = capsys.readouterr().out
     assert "1 of 4 hunks needed" in text
     assert text.count("not needed") == 3
+
+
+def test_rest_cmd_keeps_hunks_the_rest_depends_on(fixture_repo):
+    import sys
+
+    # The rest of the suite insists on the new docstring, so hunk 0 is needed too.
+    rest = f'{sys.executable} -c "import calc; assert \'documented\' in calc.__doc__"'
+    with WorktreeOracle(
+        fixture_repo["repo"], fixture_repo["base"], fixture_repo["test_cmd"], rest_cmd=rest
+    ) as oracle:
+        result = minimize_text(_diff(fixture_repo), oracle)
+    assert result.error is None
+    assert result.needed == [0, 1]
+
+
+def test_reruns_flag_flaky_outcome(fixture_repo, tmp_path):
+    import sys
+
+    marker = tmp_path / "flip"
+    script = tmp_path / "flaky.py"
+    # Fails on the first call, passes on the second: the outcome is flaky.
+    script.write_text(
+        "import pathlib, sys\n"
+        f"p = pathlib.Path({str(marker)!r})\n"
+        "if p.exists():\n    sys.exit(0)\n"
+        "p.write_text('x')\nsys.exit(1)\n"
+    )
+    cmd = f"{sys.executable} {script}"
+    with WorktreeOracle(fixture_repo["repo"], fixture_repo["base"], cmd, reruns=1) as oracle:
+        result = oracle.run("")
+    assert result.flaky is True
+    assert result.outcome is Outcome.UNRESOLVED
