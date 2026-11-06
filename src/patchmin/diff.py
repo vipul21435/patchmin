@@ -202,22 +202,72 @@ def lines_searchable(hunk: Hunk) -> bool:
     return hunk.new_path != "/dev/null"
 
 
+NO_NEWLINE = "\\ No newline at end of file"
+
+
+def _items(hunk: Hunk) -> list[tuple[int, str, bool]]:
+    """``(position, line, no_newline)`` for every line of ``hunk`` that is not
+    a ``\\`` marker; ``no_newline`` is true when a marker follows the line."""
+    items: list[tuple[int, str, bool]] = []
+    for i, ln in enumerate(hunk.lines):
+        if ln.startswith("\\"):
+            if items:
+                items[-1] = (items[-1][0], items[-1][1], True)
+            continue
+        items.append((i, ln, False))
+    return items
+
+
 def hunk_with_lines(hunk: Hunk, keep: set[int]) -> Hunk:
     """Copy ``hunk`` keeping only the change lines at positions in ``keep``.
 
     A dropped ``+`` line disappears; a dropped ``-`` line becomes context, so
-    the old text stays. Counts are recomputed.
+    the old text stays. Inside each run of change lines the k-th ``-`` line
+    is paired with the k-th ``+`` line, and a kept old line is placed where
+    its partner goes: keeping ``-a = 1`` and ``+a = 2`` of a two-line
+    replacement leaves the second old line after ``a = 2``, as in the new
+    file, rather than before it. ``\\ No newline`` markers stay with their
+    line and are moved or dropped so that only the last line of each side
+    lacks a newline. Counts are recomputed.
     """
-    lines: list[str] = []
-    for i, ln in enumerate(hunk.lines):
-        tag = ln[:1]
-        if tag in ("+", "-") and i not in keep:
-            if tag == "-":
-                lines.append(" " + ln[1:])
-            continue
-        lines.append(ln)
-    old_count = sum(1 for ln in lines if ln[:1] in (" ", "-"))
-    new_count = sum(1 for ln in lines if ln[:1] in (" ", "+"))
+    marker = next((ln for ln in hunk.lines if ln.startswith("\\")), NO_NEWLINE)
+    if set(change_lines(hunk)) <= keep:
+        out = list(hunk.lines)
+    else:
+        items: list[tuple[str, str, bool]] = []
+        block: list[tuple[int, str, bool]] = []
+
+        def flush() -> None:
+            minus = [b for b in block if b[1].startswith("-")]
+            plus = [b for b in block if b[1].startswith("+")]
+            for k in range(max(len(minus), len(plus))):
+                if k < len(minus):
+                    pos, ln, eol = minus[k]
+                    items.append(("-" if pos in keep else " ", ln[1:], eol))
+                if k < len(plus) and plus[k][0] in keep:
+                    items.append(("+", plus[k][1][1:], plus[k][2]))
+            block.clear()
+
+        for item in _items(hunk):
+            if item[1][:1] in ("+", "-"):
+                block.append(item)
+            else:
+                flush()
+                items.append((" ", item[1][1:], item[2]))
+        flush()
+        last_new = max((i for i, it in enumerate(items) if it[0] != "-"), default=-1)
+        out = []
+        for i, (tag, text, no_newline) in enumerate(items):
+            if no_newline and tag == " " and i != last_new:
+                # The old file's last line, with lines added after it: the
+                # new side needs it with a newline.
+                out += ["-" + text, marker, "+" + text]
+                continue
+            out.append(tag + text)
+            if no_newline and (tag == "-" or i == last_new):
+                out.append(marker)
+    old_count = sum(1 for ln in out if ln[:1] in (" ", "-"))
+    new_count = sum(1 for ln in out if ln[:1] in (" ", "+"))
     return Hunk(
         index=hunk.index,
         old_path=hunk.old_path,
@@ -226,7 +276,7 @@ def hunk_with_lines(hunk: Hunk, keep: set[int]) -> Hunk:
         old_count=old_count,
         new_start=hunk.new_start,
         new_count=new_count,
-        lines=lines,
+        lines=out,
         heading=hunk.heading,
     )
 
