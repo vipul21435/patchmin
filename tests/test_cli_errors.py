@@ -44,7 +44,7 @@ def test_directory_that_is_not_a_repo(fixture_repo, tmp_path, capsys):
 @pytest.mark.parametrize(
     ("flag", "value"),
     [("--reruns", "-1"), ("--jobs", "0"), ("--confirm", "-2"), ("--context", "-1"),
-     ("--timeout", "0"), ("--jobs", "two")],
+     ("--timeout", "0"), ("--timeout", "soon"), ("--jobs", "two")],
 )
 def test_out_of_range_numbers_are_rejected(fixture_repo, capsys, flag, value):
     with pytest.raises(SystemExit) as stop:
@@ -67,3 +67,18 @@ def test_unwritable_output_is_an_error_line(fixture_repo, capsys):
     code = main(_args(fixture_repo, **{"--out": "/nonexistent/dir/min.diff"}))
     assert code == 1
     assert capsys.readouterr().err.startswith("error: ")
+
+
+def test_failing_git_command_is_an_error_line(fixture_repo, capsys, monkeypatch):
+    import subprocess
+
+    from patchmin import cli
+
+    def broken(*args, **kwargs):
+        raise subprocess.CalledProcessError(
+            128, ["git", "diff"], stderr="fatal: bad object\n"
+        )
+
+    monkeypatch.setattr(cli, "_diff_between", broken)
+    assert main(_args(fixture_repo, **{"--timeout": "30"})) == 1
+    assert capsys.readouterr().err == "error: git diff failed: fatal: bad object\n"
