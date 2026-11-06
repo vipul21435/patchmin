@@ -24,7 +24,7 @@ uv pip install -e ".[dev]"
 uv run pytest -q
 ```
 
-On 2026-11-06 `uv run pytest -q --cov=patchmin` ran 171 tests, offline, with 98 % line coverage of `src/patchmin` (1101 statements, 27 missed; the tests build their own git repositories in temporary folders, and the six tests of `examples/real_commits.py` read only the saved results). It took 45.2 s, with a 1-minute load average of 4.3 read right after it; earlier runs of the suite took 36 s at a load average of 2.4 and 83 s at 7.9.
+On 2026-11-06 `uv run pytest -q --cov=patchmin` ran 171 tests, offline, with 98 % line coverage of `src/patchmin` (1101 statements, 27 missed; the tests build their own git repositories in temporary folders, and the six tests of `examples/real_commits.py` check its commands, tables and saved results without network access). It took 45.2 s, with a 1-minute load average of 4.3 read right after it; earlier runs of the suite took 36 s at a load average of 2.4 and 83 s at 7.9.
 
 ## Quickstart
 

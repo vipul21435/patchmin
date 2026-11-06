@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Rebuild the real-commit results table from nothing but the network:
-# clone the six libraries, make a Python 3.12 environment for their tests,
+# clone the four libraries, make a Python 3.12 environment for their tests,
 # run every case with --jobs 1 and --jobs 4, and print the table and the hunks.
 #
 #   bash examples/reproduce_real_commits.sh DATA_DIR
 #
-# DATA_DIR receives the clones and the test environment (about 30 MB).
+# DATA_DIR receives the clones and the test environment (about 36 MB).
 # Results go to results/jobs1 and results/jobs4 in this repository.
 set -euo pipefail
 
