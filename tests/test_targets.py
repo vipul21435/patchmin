@@ -143,3 +143,18 @@ def test_cli_find_targets_when_nothing_changes(pytest_repo, capsys):
     out = capsys.readouterr().out
     assert code == 1
     assert out.startswith("error: no test fails before the fix and passes after")
+
+
+def test_cli_warns_about_tests_the_fix_breaks(pytest_repo, capsys):
+    fx = pytest_repo
+    repo = fx["repo"]
+    # A second commit on top of the fix breaks half(); diff base..HEAD has both.
+    (repo / "lib.py").write_text(LIB.replace("x / 2", "x / 3"))
+    _git(repo, "commit", "-qam", "break half")
+    code = main([
+        "--repo", str(repo), "--base", fx["base"], "--fix", "HEAD",
+        "--test-cmd", fx["test_cmd"], "--pin", "tests/*", "--find-targets",
+    ])
+    out = capsys.readouterr().out
+    assert code == 0, out
+    assert "warning: 1 tests pass before the fix and fail after" in out
