@@ -152,3 +152,18 @@ def test_module_entry_point_prints_version():
     )
     assert proc.returncode == 0
     assert proc.stdout.strip() == "patchmin 0.1.0"
+
+
+def test_line_refinement_drops_the_comment_change(fixture_repo):
+    with WorktreeOracle(
+        fixture_repo["repo"], fixture_repo["base"], fixture_repo["test_cmd"]
+    ) as oracle:
+        result = minimize_text(_diff(fixture_repo), oracle, lines=True)
+    assert result.needed == [1]
+    kept = [v.text for v in result.line_verdicts if v.needed]
+    dropped = [v.text for v in result.line_verdicts if not v.needed]
+    assert kept == ["-    return a - b", "+    return a + b"]
+    assert all("adds two numbers" in t for t in dropped) and len(dropped) == 2
+    assert "now correctly" not in result.minimal_patch
+    assert "# adds two numbers" in result.minimal_patch
+    assert result.runs > result.trace.tests - 2 or result.cached_hits > 0

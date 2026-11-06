@@ -59,3 +59,13 @@ def test_parse_handles_no_newline_marker_and_new_file():
     assert patch.files[0].old_path == "/dev/null"
     assert patch.hunks[0].old_count == 0
     assert render_patch(patch) == text
+
+
+def test_hunk_with_lines_turns_dropped_removals_into_context():
+    from patchmin.diff import Hunk, change_lines, hunk_with_lines
+
+    h = Hunk(0, "f", "f", 1, 3, 1, 3, [" a", "-b", "+B", "-c", "+C", " d"])
+    assert change_lines(h) == [1, 2, 3, 4]
+    sub = hunk_with_lines(h, {3, 4})
+    assert sub.lines == [" a", " b", "-c", "+C", " d"]
+    assert (sub.old_count, sub.new_count) == (4, 4)

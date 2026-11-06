@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass, field
 
 from .ddmin import DdminTrace, ddmin
-from .diff import Hunk, Patch, parse_patch, render_patch
+from .diff import Hunk, Patch, change_lines, hunk_with_lines, parse_patch, render_patch, with_hunk
 from .oracle import Outcome, WorktreeOracle
 
 
@@ -21,6 +21,14 @@ class HunkVerdict:
 
 
 @dataclass
+class LineVerdict:
+    hunk: int
+    position: int
+    text: str
+    needed: bool
+
+
+@dataclass
 class MinimizeResult:
     needed: list[int]
     verdicts: list[HunkVerdict]
@@ -31,6 +39,7 @@ class MinimizeResult:
     seconds: float
     trace: DdminTrace = field(default_factory=DdminTrace)
     error: str | None = None
+    line_verdicts: list[LineVerdict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -41,6 +50,7 @@ class MinimizeResult:
             "flaky_runs": self.flaky_runs,
             "seconds": round(self.seconds, 3),
             "tests": self.trace.tests,
+            "lines": [v.__dict__ for v in self.line_verdicts],
             "error": self.error,
         }
 
@@ -101,5 +111,49 @@ def minimize_patch(patch: Patch, oracle: WorktreeOracle) -> MinimizeResult:
     return finish(needed, trace)
 
 
-def minimize_text(patch_text: str, oracle: WorktreeOracle) -> MinimizeResult:
-    return minimize_patch(parse_patch(patch_text), oracle)
+def refine_lines(patch: Patch, result: MinimizeResult, oracle: WorktreeOracle) -> MinimizeResult:
+    """Run ddmin over the change lines of every needed hunk, one hunk at a time.
+
+    While one hunk is refined the other needed hunks stay whole. The result
+    is updated in place: ``line_verdicts`` and ``minimal_patch`` are set and
+    the run counts are refreshed.
+    """
+    if result.error is not None:
+        return result
+    t0 = time.monotonic()
+    needed = set(result.needed)
+    current = patch
+    verdicts: list[LineVerdict] = []
+    for hunk in patch.hunks:
+        if hunk.index not in needed:
+            continue
+        positions = change_lines(hunk)
+
+        def check(subset: list[int], hunk: Hunk = hunk, current: Patch = current) -> bool:
+            candidate = with_hunk(current, hunk_with_lines(hunk, set(subset)))
+            run = oracle.run(render_patch(candidate, needed))
+            if run.flaky:
+                result.flaky_runs += 1
+            return run.outcome is Outcome.PASS
+
+        kept = set(ddmin(positions, check, result.trace)) if len(positions) > 1 else set(positions)
+        verdicts.extend(
+            LineVerdict(hunk.index, i, hunk.lines[i], i in kept) for i in positions
+        )
+        current = with_hunk(current, hunk_with_lines(hunk, kept))
+    result.line_verdicts = verdicts
+    result.minimal_patch = render_patch(current, needed)
+    result.runs = oracle.runs
+    result.cached_hits = oracle.cache.hits
+    result.seconds += time.monotonic() - t0
+    return result
+
+
+def minimize_text(
+    patch_text: str, oracle: WorktreeOracle, lines: bool = False
+) -> MinimizeResult:
+    patch = parse_patch(patch_text)
+    result = minimize_patch(patch, oracle)
+    if lines:
+        result = refine_lines(patch, result, oracle)
+    return result

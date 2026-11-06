@@ -149,3 +149,46 @@ def render_patch(patch: Patch, keep: set[int] | None = None) -> str:
     if not out:
         return ""
     return "\n".join(out) + "\n"
+
+
+def change_lines(hunk: Hunk) -> list[int]:
+    """Positions of the ``+`` and ``-`` lines inside ``hunk.lines``."""
+    return [i for i, ln in enumerate(hunk.lines) if ln[:1] in ("+", "-")]
+
+
+def hunk_with_lines(hunk: Hunk, keep: set[int]) -> Hunk:
+    """Copy ``hunk`` keeping only the change lines at positions in ``keep``.
+
+    A dropped ``+`` line disappears; a dropped ``-`` line becomes context, so
+    the old text stays. Counts are recomputed.
+    """
+    lines: list[str] = []
+    for i, ln in enumerate(hunk.lines):
+        tag = ln[:1]
+        if tag in ("+", "-") and i not in keep:
+            if tag == "-":
+                lines.append(" " + ln[1:])
+            continue
+        lines.append(ln)
+    old_count = sum(1 for ln in lines if ln[:1] in (" ", "-"))
+    new_count = sum(1 for ln in lines if ln[:1] in (" ", "+"))
+    return Hunk(
+        index=hunk.index,
+        old_path=hunk.old_path,
+        new_path=hunk.new_path,
+        old_start=hunk.old_start,
+        old_count=old_count,
+        new_start=hunk.new_start,
+        new_count=new_count,
+        lines=lines,
+        heading=hunk.heading,
+    )
+
+
+def with_hunk(patch: Patch, replacement: Hunk) -> Patch:
+    """A copy of ``patch`` where the hunk with the same index is replaced."""
+    files = []
+    for fp in patch.files:
+        hunks = [replacement if h.index == replacement.index else h for h in fp.hunks]
+        files.append(FilePatch(fp.old_path, fp.new_path, list(fp.header), hunks))
+    return Patch(files)

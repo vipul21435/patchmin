@@ -47,6 +47,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--timeout", type=float, default=600.0, help="seconds per test run")
     p.add_argument("--reruns", type=int, default=0, help="extra runs to confirm each outcome")
     p.add_argument("--cache", type=Path, default=None, help="JSON file for the run cache")
+    p.add_argument(
+        "--lines", action="store_true", help="also minimise the change lines inside needed hunks"
+    )
     p.add_argument("--json", action="store_true", help="print the result as JSON")
     p.add_argument("--out", type=Path, default=None, help="write the minimal patch here")
     return p
@@ -70,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
         cache=cache,
         rest_cmd=args.rest_cmd,
     ) as oracle:
-        result = minimize_text(patch_text, oracle)
+        result = minimize_text(patch_text, oracle, lines=args.lines)
     if args.json:
         print(json.dumps(result.to_dict(), indent=2))
     else:
@@ -79,6 +82,12 @@ def main(argv: list[str] | None = None) -> int:
         for v in result.verdicts:
             mark = "needed    " if v.needed else "not needed"
             print(f"{mark}  hunk {v.index:<3} {v.label:<32} +{v.added}/-{v.removed}  {v.heading}")
+        for lv in result.line_verdicts:
+            mark = "needed    " if lv.needed else "not needed"
+            print(f"{mark}  hunk {lv.hunk:<3} line {lv.position:<3} {lv.text}")
+        if result.line_verdicts:
+            kept = sum(1 for lv in result.line_verdicts if lv.needed)
+            print(f"{kept} of {len(result.line_verdicts)} change lines needed")
         print(
             f"{len(result.needed)} of {len(result.verdicts)} hunks needed; "
             f"{result.runs} test runs ({result.cached_hits} cache hits, "

@@ -97,5 +97,6 @@ if __name__ == "__main__":
             "--fix", fix,
             "--test-cmd", f'{sys.executable} -c "{CHECK}"',
         ]
-        print("$ patchmin --repo <repo> --base <base> --fix <fix> --test-cmd 'python -c ...'")
-        sys.exit(main(argv))
+        print("$ patchmin --repo <repo> --base <base> --fix <fix> --lines \\")
+        print("      --test-cmd 'python -c ...'")
+        sys.exit(main(argv + ["--lines"]))
