@@ -150,7 +150,9 @@ class _Search:
         def evaluate(subsets: list[list]) -> list[bool]:
             return self.passes_many([render(s) for s in subsets])
 
-        return ddmin(items, interesting, trace, evaluate=evaluate if self.parallel else None)
+        if not self.parallel:
+            return ddmin(items, interesting, trace)
+        return ddmin(items, interesting, trace, evaluate=evaluate, batch=self.oracle.jobs)
 
 
 def minimize_patch(

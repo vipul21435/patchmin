@@ -137,3 +137,34 @@ def test_no_complement_trials_with_two_chunks():
 
     assert ddmin([0, 1], interesting) == [0, 1]
     assert sorted(seen) == [(0,), (1,)]
+
+
+def test_batched_complements_give_the_sequential_result():
+    rng = random.Random(21)
+    for trial in range(150):
+        n = rng.randint(1, 16)
+        interesting = _random_oracle(n, 3000 + trial)
+        batches: list[int] = []
+
+        def evaluate(subsets, interesting=interesting, batches=batches):
+            batches.append(len(subsets))
+            return [interesting(s) for s in subsets]
+
+        items = list(range(n))
+        seq = ddmin(items, interesting)
+        for batch in (4, 8, 64):
+            batches.clear()
+            assert ddmin(items, interesting, evaluate=evaluate, batch=batch) == seq
+            assert all(size <= max(batch, n) for size in batches)
+
+
+def test_batch_sends_chunks_and_complements_together():
+    sizes: list[int] = []
+
+    def evaluate(subsets):
+        sizes.append(len(subsets))
+        return [set(s) == {0, 1, 2, 3, 4, 5, 6, 7} for s in subsets]
+
+    # Nothing smaller passes: rounds of 2 chunks, then 4 chunks + 4 complements, then 8 + 8.
+    ddmin(list(range(8)), lambda s: len(s) == 8, evaluate=evaluate, batch=16)
+    assert sizes == [2, 8, 16]

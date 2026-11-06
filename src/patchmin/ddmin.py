@@ -40,6 +40,7 @@ def ddmin(
     interesting: Callable[[list[T]], bool],
     trace: DdminTrace | None = None,
     evaluate: Callable[[list[list[T]]], list[bool]] | None = None,
+    batch: int = 0,
 ) -> list[T]:
     """Return a 1-minimal subsequence of ``items`` for which ``interesting`` holds.
 
@@ -50,6 +51,12 @@ def ddmin(
     candidates in parallel. The first interesting subset in order is chosen,
     so the result is the same as the sequential search; the sequential search
     stops at the first interesting subset and may run fewer tests.
+
+    ``batch`` is the number of subsets the caller can run at once. When the
+    chunks and their complements of a round fit in one batch, they are sent
+    together, so idle workers try the complements while the chunks run. The
+    choice is still the first interesting chunk, then the first interesting
+    complement, so the result does not change.
     """
     trace = trace if trace is not None else DdminTrace()
     current = list(items)
@@ -74,16 +81,34 @@ def ddmin(
     n = 2
     while len(current) >= 2:
         chunks = _split(current, n)
-        hit = first(chunks)
-        if hit is not None:
-            current = chunks[hit]
-            n = 2
-            continue
         # With two chunks each complement is the other chunk, already tried.
+        complements: list[list[T]] = []
         if len(chunks) > 2:
             complements = [[x for x in current if x not in chunk] for chunk in chunks]
             complements = [c for c in complements if c]
-            hit = first(complements)
+        together = evaluate is not None and 0 < len(chunks) + len(complements) <= batch
+        if together and complements:
+            results = [bool(r) for r in evaluate(chunks + complements)]
+            trace.tests += len(results)
+            both = chunks + complements
+            trace.tried.extend((len(s), r) for s, r in zip(both, results, strict=True))
+            hit = next((i for i, r in enumerate(results[: len(chunks)]) if r), None)
+            if hit is not None:
+                current = chunks[hit]
+                n = 2
+                continue
+            hit = next((i for i, r in enumerate(results[len(chunks) :]) if r), None)
+            if hit is not None:
+                current = complements[hit]
+                n = max(n - 1, 2)
+                continue
+        else:
+            hit = first(chunks)
+            if hit is not None:
+                current = chunks[hit]
+                n = 2
+                continue
+            hit = first(complements) if complements else None
             if hit is not None:
                 current = complements[hit]
                 n = max(n - 1, 2)
