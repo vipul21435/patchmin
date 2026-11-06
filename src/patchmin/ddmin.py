@@ -52,10 +52,10 @@ def ddmin(
     so the result is the same as the sequential search; the sequential search
     stops at the first interesting subset and may run fewer tests.
 
-    ``batch`` is the number of subsets the caller can run at once. When the
-    chunks and their complements of a round fit in one batch, they are sent
-    together, so idle workers try the complements while the chunks run. The
-    choice is still the first interesting chunk, then the first interesting
+    ``batch`` is the number of subsets the caller can run at once. When a
+    round has fewer chunks than that, the first complements are sent in the
+    same call, so idle workers try them while the chunks run. The choice is
+    still the first interesting chunk, then the first interesting
     complement, so the result does not change.
     """
     trace = trace if trace is not None else DdminTrace()
@@ -86,22 +86,23 @@ def ddmin(
         if len(chunks) > 2:
             complements = [[x for x in current if x not in chunk] for chunk in chunks]
             complements = [c for c in complements if c]
-        together = evaluate is not None and 0 < len(chunks) + len(complements) <= batch
-        if together and complements:
-            results = [bool(r) for r in evaluate(chunks + complements)]
+        # Free workers (batch minus the chunks) try the first complements
+        # speculatively in the same call; the rest follow if needed.
+        extra = complements[: max(0, batch - len(chunks))] if evaluate is not None else []
+        if extra:
+            sent = chunks + extra
+            results = [bool(r) for r in evaluate(sent)]
             trace.tests += len(results)
-            both = chunks + complements
-            trace.tried.extend((len(s), r) for s, r in zip(both, results, strict=True))
+            trace.tried.extend((len(s), r) for s, r in zip(sent, results, strict=True))
             hit = next((i for i, r in enumerate(results[: len(chunks)]) if r), None)
             if hit is not None:
                 current = chunks[hit]
                 n = 2
                 continue
             hit = next((i for i, r in enumerate(results[len(chunks) :]) if r), None)
-            if hit is not None:
-                current = complements[hit]
-                n = max(n - 1, 2)
-                continue
+            if hit is None and len(extra) < len(complements):
+                rest = first(complements[len(extra) :])
+                hit = None if rest is None else len(extra) + rest
         else:
             hit = first(chunks)
             if hit is not None:
@@ -109,10 +110,10 @@ def ddmin(
                 n = 2
                 continue
             hit = first(complements) if complements else None
-            if hit is not None:
-                current = complements[hit]
-                n = max(n - 1, 2)
-                continue
+        if hit is not None:
+            current = complements[hit]
+            n = max(n - 1, 2)
+            continue
         if n >= len(current):
             break
         n = min(n * 2, len(current))

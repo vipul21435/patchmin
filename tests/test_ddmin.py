@@ -168,3 +168,8 @@ def test_batch_sends_chunks_and_complements_together():
     # Nothing smaller passes: rounds of 2 chunks, then 4 chunks + 4 complements, then 8 + 8.
     ddmin(list(range(8)), lambda s: len(s) == 8, evaluate=evaluate, batch=16)
     assert sizes == [2, 8, 16]
+    # With 6 workers: 4 chunks + 2 complements, then the other 2 complements;
+    # 8 chunks leave no free worker, then the 8 complements.
+    sizes.clear()
+    ddmin(list(range(8)), lambda s: len(s) == 8, evaluate=evaluate, batch=6)
+    assert sizes == [2, 6, 2, 8, 8]
