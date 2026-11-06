@@ -46,7 +46,7 @@ The general form:
 patchmin --repo PATH --base COMMIT (--fix COMMIT | --patch FILE) --test-cmd CMD
     [--context N] [--target TEST ...] [--find-targets] [--pin GLOB ...] [--rest-cmd CMD]
     [--lines] [--jobs N] [--reruns K] [--confirm C] [--timeout SECONDS]
-    [--cache runs.json] [--json] [--out minimal.diff]
+    [--cache runs.json] [--json] [--out minimal.diff] [--markdown report.md]
 ```
 
 | Option | Meaning |
@@ -64,6 +64,7 @@ patchmin --repo PATH --base COMMIT (--fix COMMIT | --patch FILE) --test-cmd CMD
 | `--timeout` | seconds per command (default 600); a run that hits it is unresolved |
 | `--cache FILE` | keep outcomes in a JSON file, so a second invocation reuses them |
 | `--json`, `--out` | print the result as JSON; write the minimal patch as a diff that `git apply` accepts on `BASE` |
+| `--markdown FILE` | write a Markdown report: counts, one row per hunk, the line verdicts and the minimal patch |
 
 From Python (`uv run python examples/python_api.py`, abridged output below the code):
 

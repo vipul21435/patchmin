@@ -225,3 +225,34 @@ def test_public_api_exports():
     for name in patchmin.__all__:
         assert hasattr(patchmin, name), name
     assert patchmin.__version__ == "0.1.0"
+
+
+def test_cli_markdown_report(fixture_repo, tmp_path, capsys):
+    report = tmp_path / "report.md"
+    code = main([
+        "--repo", str(fixture_repo["repo"]), "--base", fixture_repo["base"],
+        "--fix", fixture_repo["fix"], "--test-cmd", fixture_repo["test_cmd"],
+        "--lines", "--markdown", str(report),
+    ])
+    capsys.readouterr()
+    assert code == 0
+    text = report.read_text()
+    assert "- Hunks needed: 1 of 4" in text
+    assert "| 1 | needed | code | `calc.py:11` | +2/-2 | PAD = [ |" in text
+    assert "Change lines needed: 2 of 4" in text
+    assert "```diff\ndiff --git a/calc.py b/calc.py" in text
+    assert "- Minimal patch confirmed: pass" in text
+
+
+def test_markdown_report_of_an_error():
+    from patchmin.core import MinimizeResult
+    from patchmin.report import markdown_report
+
+    result = MinimizeResult([], [], "", 2, 0, 0, 0.1, error="full patch does not pass")
+    assert "Error: full patch does not pass" in markdown_report(result)
+
+
+def test_markdown_escapes_pipes():
+    from patchmin.report import _cell
+
+    assert _cell(" a|b `c` ") == "a\\|b 'c'"

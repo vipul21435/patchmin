@@ -13,6 +13,7 @@ from .cache import RunCache
 from .core import minimize_text, pinned_hunks
 from .diff import parse_patch
 from .oracle import WorktreeOracle
+from .report import markdown_report
 from .targets import find_targets
 
 
@@ -82,6 +83,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--json", action="store_true", help="print the result as JSON")
     p.add_argument("--out", type=Path, default=None, help="write the minimal patch here")
+    p.add_argument(
+        "--markdown", type=Path, default=None, help="write a Markdown report of the result here"
+    )
     return p
 
 
@@ -159,6 +163,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"minimal patch {verdict}: {', '.join(result.confirm_outcomes)}")
     if args.out is not None and not result.error:
         args.out.write_text(result.minimal_patch)
+    if args.markdown is not None:
+        args.markdown.write_text(markdown_report(result))
     if result.error:
         return 1
     return 2 if result.confirmed is False else 0
