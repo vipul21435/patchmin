@@ -101,6 +101,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=1,
         help="uncached runs of the final minimal patch to confirm it passes (0 to skip)",
     )
+    p.add_argument(
+        "--clean-ignored",
+        action="store_true",
+        help="delete every ignored file between trials (git clean -X); by default "
+        "only ignored __pycache__ and .pyc files are deleted",
+    )
     p.add_argument("--jobs", type=_count(1), default=1, help="git worktrees to run in parallel")
     p.add_argument("--cache", type=Path, default=None, help="JSON file for the run cache")
     p.add_argument(
@@ -177,6 +183,7 @@ def _run(args: argparse.Namespace, repo: Path) -> int:
         rest_cmd=args.rest_cmd,
         jobs=args.jobs,
         unidiff_zero=zero_context,
+        clean_ignored=args.clean_ignored,
     ) as oracle:
         if args.find_targets:
             patch = parse_patch(patch_text)

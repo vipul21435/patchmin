@@ -122,3 +122,36 @@ def fixture_repo(tmp_path: Path) -> dict:
     fix = _git(repo, "rev-parse", "HEAD")
     test_cmd = f'{sys.executable} -c "{CHECK}"'
     return {"repo": repo, "base": base, "fix": fix, "test_cmd": test_cmd}
+
+
+def make_repo(root: Path, before: dict, after: dict) -> dict:
+    """A git repo with one commit of ``before`` files and one of ``after``.
+
+    Values are str (written as text) or bytes (written as is). Returns the
+    repo path and both commit ids.
+    """
+    repo = root / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "config", "user.email", "fixture@example.invalid")
+    _git(repo, "config", "user.name", "Fixture")
+    _git(repo, "config", "core.autocrlf", "false")
+
+    def write(files: dict) -> None:
+        for name, content in files.items():
+            path = repo / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if isinstance(content, bytes):
+                path.write_bytes(content)
+            else:
+                path.write_bytes(content.encode("utf-8"))
+
+    write(before)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "before")
+    base = _git(repo, "rev-parse", "HEAD")
+    write(after)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "after")
+    fix = _git(repo, "rev-parse", "HEAD")
+    return {"repo": repo, "base": base, "fix": fix}

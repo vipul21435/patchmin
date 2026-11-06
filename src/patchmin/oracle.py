@@ -37,8 +37,19 @@ class RunResult:
     empty otherwise."""
 
 
-def run_command(cmd: list[str], cwd: Path, timeout: float) -> tuple[int | None, str]:
+def run_env() -> dict[str, str]:
+    """``os.environ`` with ``PYTHONDONTWRITEBYTECODE=1``."""
+    return {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+
+
+def run_command(
+    cmd: list[str], cwd: Path, timeout: float, env: dict[str, str] | None = None
+) -> tuple[int | None, str]:
     """Run ``cmd`` in its own process group and return ``(returncode, output)``.
+
+    The environment is ``os.environ`` with ``PYTHONDONTWRITEBYTECODE=1`` unless
+    ``env`` is given, so Python test runs leave no bytecode behind for the
+    next trial.
 
     On timeout the whole group is killed, so test runners that start worker
     processes do not leave them behind, and the return code is None. An
@@ -50,6 +61,7 @@ def run_command(cmd: list[str], cwd: Path, timeout: float) -> tuple[int | None, 
         cwd=cwd,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
+        env=run_env() if env is None else env,
         text=True,
         start_new_session=True,
     )
@@ -97,7 +109,9 @@ class WorktreeOracle:
     after a passing target run; a subset passes only when both commands do,
     so the rest of the suite stays green. ``jobs`` worktrees are created and
     ``run_many`` runs that many subsets at once. ``unidiff_zero`` lets
-    ``git apply`` take hunks without context lines (diffs made with ``-U0``).
+        ``git apply`` take hunks without context lines (diffs made with ``-U0``).
+    ``clean_ignored`` deletes ignored files too between trials (build output,
+    caches); by default only ignored Python bytecode is deleted.
 
     ``base`` is resolved to a commit id once, here, and the cache key uses
     that id, so a persistent cache never answers for a different commit that
@@ -118,6 +132,7 @@ class WorktreeOracle:
         rest_cmd: str | None = None,
         jobs: int = 1,
         unidiff_zero: bool = False,
+        clean_ignored: bool = False,
     ) -> None:
         self.repo = Path(repo)
         self.base = base
@@ -131,6 +146,7 @@ class WorktreeOracle:
         self.rest_cmd = rest_cmd
         self.jobs = max(1, int(jobs))
         self.unidiff_zero = unidiff_zero
+        self.clean_ignored = clean_ignored
         self.runs = 0
         self._worktrees: list[Path] = []
         self._temp_root: Path | None = None
@@ -169,10 +185,29 @@ class WorktreeOracle:
             shutil.rmtree(self._temp_root, ignore_errors=True)
             self._temp_root = None
 
-    @staticmethod
-    def _reset(worktree: Path) -> None:
+    def _reset(self, worktree: Path) -> None:
+        """Bring ``worktree`` back to the base commit before a trial.
+
+        ``git clean`` keeps ignored files, so ignored ``__pycache__``
+        directories and ``.pyc`` files are deleted as well: CPython trusts a
+        cached ``.pyc`` whose source has the same size and mtime second,
+        which a same-size edit restored by the previous trial can have.
+        With ``clean_ignored`` every ignored file goes (``git clean -X``).
+        """
         _git(worktree, "checkout", "--", ".")
-        _git(worktree, "clean", "-fdq")
+        _git(worktree, "clean", "-fdqx" if self.clean_ignored else "-fdq")
+        if self.clean_ignored:
+            return
+        listed = _git(
+            worktree, "ls-files", "-z", "--others", "--ignored", "--exclude-standard",
+            "--directory",
+        ).stdout
+        for entry in listed.split("\0"):
+            name = entry.rstrip("/")
+            if name.rsplit("/", 1)[-1] == "__pycache__":
+                shutil.rmtree(worktree / name, ignore_errors=True)
+            elif name.endswith((".pyc", ".pyo")):
+                (worktree / name).unlink(missing_ok=True)
 
     def _apply(self, worktree: Path, patch_text: str) -> bool:
         if not patch_text.strip():

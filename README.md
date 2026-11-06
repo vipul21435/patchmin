@@ -47,7 +47,7 @@ The general form:
 ```
 patchmin --repo PATH --base COMMIT (--fix COMMIT | --patch FILE) --test-cmd CMD
     [--context N] [--target TEST ...] [--find-targets] [--pin GLOB ...] [--rest-cmd CMD]
-    [--lines] [--jobs N] [--reruns K] [--confirm C] [--timeout SECONDS]
+    [--lines] [--clean-ignored] [--jobs N] [--reruns K] [--confirm C] [--timeout SECONDS]
     [--cache runs.json] [--json] [--out minimal.diff] [--markdown report.md]
 ```
 
@@ -60,6 +60,7 @@ patchmin --repo PATH --base COMMIT (--fix COMMIT | --patch FILE) --test-cmd CMD
 | `--pin GLOB` | hunks in matching files are applied in every trial and never searched (typically the test files of the fix) |
 | `--rest-cmd` | a second command that must also pass for a subset to count, so the rest of the suite stays green |
 | `--lines` | after the hunk search, minimise the `+`/`-` lines inside each needed hunk |
+| `--clean-ignored` | delete every ignored file between trials (`git clean -X`); by default only ignored `__pycache__` directories and `.pyc` files are deleted |
 | `--jobs N` | run up to N subsets at once, each in its own git worktree (default 1) |
 | `--reruns K` | run every fresh outcome K more times; disagreement marks it flaky (default 0) |
 | `--confirm C` | run the final minimal patch C more times without the cache (default 1); exit code 2 if any of them fails |
@@ -185,6 +186,7 @@ Data: the repositories were cloned from the source links on https://pypi.org/pro
 - `--find-targets` works with pytest only, and maps junit entries to node ids by file and class name; parametrised ids are kept as pytest writes them. Other test runners need `--target`.
 - Test commands are split with `shlex` and run without a shell: pipes, redirection and environment assignments in the command are not supported (wrap them in a script).
 - The environment is whatever the given interpreter has: the tool does not install the project or its dependencies, and does not isolate runs from each other beyond separate worktrees.
+- Between trials in one worktree, tracked files are restored and untracked files deleted, but ignored files persist (build output, tool caches), except Python bytecode: ignored `__pycache__` directories and `.pyc` files are deleted, and test commands run with `PYTHONDONTWRITEBYTECODE=1`, because CPython would otherwise trust a `.pyc` left by a previous trial after a same-size edit made within the same second. `--clean-ignored` deletes every ignored file instead.
 - Kinds are heuristics read from the diff alone; a hunk wholly inside a long docstring with no fence in view is labelled `code`.
 - With `--jobs` above 1, test runs share the machine: tests that write to fixed paths outside the worktree, bind fixed ports or rely on timing can interfere with each other.
 - Wall times in this README were measured on a laptop that was running other work at the same time; repeats of the same command differ by tens of percent (see the results section).
