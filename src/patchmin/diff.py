@@ -80,15 +80,13 @@ def parse_patch(text: str) -> Patch:
     pending_header: list[str] = []
 
     for raw in text.splitlines():
-        if raw.startswith("diff --git ") or raw.startswith("--- ") and hunk is None and not raw.startswith("--- a/") and current is None and not old_path:
-            pass
         if raw.startswith("diff --git "):
             current = None
             hunk = None
             old_path = new_path = ""
             pending_header = [raw]
             continue
-        if raw.startswith("--- ") and hunk is None or (raw.startswith("--- ") and current is None):
+        if raw.startswith("--- ") and (hunk is None or current is None):
             old_path = _strip_prefix(raw[4:])
             pending_header.append(raw)
             hunk = None
@@ -121,7 +119,7 @@ def parse_patch(text: str) -> Patch:
             # A context line whose text is empty, written without the space.
             hunk.lines.append(" ")
             continue
-        if current is None or hunk is None:
+        if hunk is None:
             pending_header.append(raw)
     return patch
 
