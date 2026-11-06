@@ -10,7 +10,7 @@
     ]
   },
   "source": "https://pypi.org/project/tabulate/",
-  "wall_seconds": 10.2,
+  "wall_seconds": 11.6,
   "result": {
     "needed": [
       2
@@ -97,7 +97,7 @@
       "pass"
     ],
     "confirmed": true,
-    "seconds": 10.054,
+    "seconds": 11.225,
     "tests": 24,
     "lines": [
       {
@@ -131,6 +131,11 @@
         "needed": true
       }
     ],
-    "error": null
+    "error": null,
+    "targets": [
+      "test/test_output.py::test_asciidoc",
+      "test/test_output.py::test_asciidoc_headerless",
+      "test/test_regression.py::test_asciidoc_without_trailing_whitespace"
+    ]
   }
 }

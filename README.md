@@ -150,11 +150,11 @@ which runs, for each case, `patchmin --base C^ --fix C --pin 'test/*' --test-cmd
 
 | commit | hunks needed | lines needed | ddmin trials | test runs | cache hits | confirm | wall s |
 |---|---|---|---|---|---|---|---|
-| tabulate 8014ec6 | 1 of 3 | 1 of 4 | 8 | 22 | 0 | pass, pass | 11.8 |
-| tabulate 3aa568c | 1 of 3 | 5 of 5 | 24 | 42 | 6 | pass, pass | 10.2 |
-| more-itertools ce676d2 | 3 of 4 | 12 of 12 | 46 | 90 | 4 | pass, pass | 180.5 |
+| tabulate 8014ec6 | 1 of 3 | 1 of 4 | 8 | 22 | 0 | pass, pass | 13.7 |
+| tabulate 3aa568c | 1 of 3 | 5 of 5 | 24 | 42 | 6 | pass, pass | 11.6 |
+| more-itertools ce676d2 | 3 of 4 | 12 of 12 | 46 | 90 | 4 | pass, pass | 263.0 |
 
-"Hunks needed" counts the hunks searched (pinned test hunks excluded). "Test runs" includes the two pre-checks, the reruns (`--reruns 1` doubles every fresh run) and the two confirmation runs. No subset was flaky, timed out or failed to apply.
+The files in `results/` and this table come from a rerun with the current code (1-minute load average 30.6 at the start); it gave the same verdicts and counts as the first run, whose wall times were 11.8, 10.2 and 180.5 s. "Hunks needed" counts the hunks searched (pinned test hunks excluded). "Test runs" includes the two pre-checks, the reruns (`--reruns 1` doubles every fresh run) and the two confirmation runs. No subset was flaky, timed out or failed to apply.
 
 What the minimal subsets show:
 
@@ -162,15 +162,16 @@ What the minimal subsets show:
 - **tabulate 3aa568c.** Of the two hunks in `_asciidoc_row`, only the second is needed: it strips the line built for header and data rows, which is where the trailing whitespace came from. The first adds `.rstrip()` to the `[cols=...]` / `|====` line and to the above-line branch; that text ends in `|====`, so stripping it changes nothing the tests see, and the targets and the full suite pass without it. Every line of the needed hunk is needed.
 - **more-itertools ce676d2.** All three code hunks (`split_before`, `split_after`, `split_when`) are needed, each by its own target test, and every line inside them; only the changelog line in `docs/versions.rst` is not needed.
 
-Parallel worktrees. The same command with `--jobs 1`, `4` and `8` (and `--out OTHER_DIR`), five runs in all on the same laptop on 2026-11-06, while other work was running (the 1-minute load average at the start of each run is given; the laptop has 8 cores). Wall seconds:
+Parallel worktrees. The same command with `--jobs 1`, `4` and `8` (and `--out OTHER_DIR`), six runs in all on the same laptop on 2026-11-06, while other work was running (the 1-minute load average at the start of each run is given; the laptop has 8 cores). Wall seconds:
 
 | run | jobs | load | tabulate 8014ec6 | tabulate 3aa568c | more-itertools ce676d2 |
 |---|---|---|---|---|---|
 | first | 1 | not recorded | 12.8 | 14.7 | 199.2 |
-| first (table above) | 4 | not recorded | 11.8 | 10.2 | 180.5 |
+| first | 4 | not recorded | 11.8 | 10.2 | 180.5 |
 | repeat | 4 | 5.1 | 17.1 | 15.6 | 275.8 |
 | repeat | 8 | 3.7 | 12.1 | 10.3 | 179.5 |
 | repeat | 1 | 2.6 | 13.2 | 13.9 | 221.2 |
+| rerun (table above) | 4 | 30.6 | 13.7 | 11.6 | 263.0 |
 
 The repeats ran after the batching of chunks with complements was added and gave the same verdicts, trial and run counts as the first runs. With one job, more-itertools took 43 trials and 84 runs; with 4 or 8 jobs, 46 trials and 90 runs, because a parallel round runs every chunk of the round, including those after the first passing one. On this machine the noise between repeats (180.5 s and 275.8 s for the same command) is larger than the gain from parallel worktrees, so these runs do not show a clear speed-up. Two reasons in the search itself: with 4 hunks a round has at most 4 chunks, so at most 4 worktrees are busy, and every passing subset also runs the whole suite as the rest command (about 11 s for more-itertools) inside its own worktree.
 

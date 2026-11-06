@@ -10,7 +10,7 @@
     ]
   },
   "source": "https://pypi.org/project/more-itertools/",
-  "wall_seconds": 180.5,
+  "wall_seconds": 263.0,
   "result": {
     "needed": [
       1,
@@ -122,7 +122,7 @@
       "pass"
     ],
     "confirmed": true,
-    "seconds": 180.319,
+    "seconds": 262.649,
     "tests": 46,
     "lines": [
       {
@@ -198,6 +198,11 @@
         "needed": true
       }
     ],
-    "error": null
+    "error": null,
+    "targets": [
+      "tests/test_more.py::SplitBeforeTest::test_empty_collection",
+      "tests/test_more.py::SplitAfterTest::test_empty_collection",
+      "tests/test_more.py::SplitWhenTests::test_empty_iterable"
+    ]
   }
 }

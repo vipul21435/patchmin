@@ -11,7 +11,7 @@
     ]
   },
   "source": "https://pypi.org/project/tabulate/",
-  "wall_seconds": 11.8,
+  "wall_seconds": 13.7,
   "result": {
     "needed": [
       2
@@ -110,7 +110,7 @@
       "pass"
     ],
     "confirmed": true,
-    "seconds": 11.594,
+    "seconds": 13.422,
     "tests": 8,
     "lines": [
       {
@@ -138,6 +138,12 @@
         "needed": false
       }
     ],
-    "error": null
+    "error": null,
+    "targets": [
+      "test/test_output.py::test_github",
+      "test/test_output.py::test_github_multiline",
+      "test/test_output.py::test_github_with_colalign",
+      "test/test_output.py::test_simple_headerless_with_sep_line_with_padding_in_tablefmt"
+    ]
   }
 }
