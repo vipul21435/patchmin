@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shlex
+import shutil
 import signal
 import subprocess
 import tempfile
@@ -122,6 +123,7 @@ class WorktreeOracle:
         self.unidiff_zero = unidiff_zero
         self.runs = 0
         self._worktrees: list[Path] = []
+        self._temp_root: Path | None = None
         self._lock = threading.Lock()
 
     @property
@@ -138,8 +140,11 @@ class WorktreeOracle:
     def open(self) -> None:
         if self._worktrees:
             return
-        root = self.work_dir or Path(tempfile.mkdtemp(prefix="patchmin-"))
-        root.mkdir(parents=True, exist_ok=True)
+        if self.work_dir is not None:
+            root = self.work_dir
+            root.mkdir(parents=True, exist_ok=True)
+        else:
+            root = self._temp_root = Path(tempfile.mkdtemp(prefix="patchmin-"))
         for i in range(self.jobs):
             wt = root / f"wt{i}"
             _git(self.repo, "worktree", "add", "--detach", str(wt), self.base_commit)
@@ -149,6 +154,10 @@ class WorktreeOracle:
         for wt in self._worktrees:
             _git(self.repo, "worktree", "remove", "--force", str(wt), check=False)
         self._worktrees = []
+        if self._temp_root is not None:
+            # Only a directory this oracle made itself; a given work_dir stays.
+            shutil.rmtree(self._temp_root, ignore_errors=True)
+            self._temp_root = None
 
     @staticmethod
     def _reset(worktree: Path) -> None:

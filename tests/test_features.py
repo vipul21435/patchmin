@@ -63,8 +63,18 @@ def test_worktrees_are_removed_on_close(fixture_repo):
     with WorktreeOracle(*args, jobs=2) as oracle:
         paths = list(oracle._worktrees)
         assert all(p.exists() for p in paths)
+        root = paths[0].parent
     assert not any(p.exists() for p in paths)
+    assert not root.exists()
     assert len(_git(fixture_repo["repo"], "worktree", "list").splitlines()) == 1
+
+
+def test_a_given_work_dir_is_kept_on_close(fixture_repo, tmp_path):
+    args = (fixture_repo["repo"], fixture_repo["base"], fixture_repo["test_cmd"])
+    work = tmp_path / "work"
+    with WorktreeOracle(*args, work_dir=work) as oracle:
+        assert oracle._worktrees[0].parent == work
+    assert work.is_dir() and not any(work.iterdir())
 
 
 def test_pinned_test_hunks_are_always_applied(repo_with_test):
