@@ -67,6 +67,14 @@ def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProc
     )
 
 
+def resolve_commit(repo: Path, rev: str) -> str:
+    """Return the full commit id ``rev`` names in ``repo``; ValueError if none."""
+    proc = _git(repo, "rev-parse", "--verify", "--quiet", f"{rev}^{{commit}}", check=False)
+    if proc.returncode != 0 or not proc.stdout.strip():
+        raise ValueError(f"{rev!r} is not a commit in {repo}")
+    return proc.stdout.strip()
+
+
 class WorktreeOracle:
     """Applies a patch text on top of ``base`` in a worktree and runs a command.
 
@@ -79,6 +87,11 @@ class WorktreeOracle:
     so the rest of the suite stays green. ``jobs`` worktrees are created and
     ``run_many`` runs that many subsets at once. ``unidiff_zero`` lets
     ``git apply`` take hunks without context lines (diffs made with ``-U0``).
+
+    ``base`` is resolved to a commit id once, here, and the cache key uses
+    that id, so a persistent cache never answers for a different commit that
+    the same name (``HEAD~1``, a branch) points at later. A ``ValueError`` is
+    raised when ``base`` does not name a commit in ``repo``.
     """
 
     def __init__(
@@ -97,6 +110,7 @@ class WorktreeOracle:
     ) -> None:
         self.repo = Path(repo)
         self.base = base
+        self.base_commit = resolve_commit(self.repo, base)
         self.test_cmd = test_cmd
         self.targets = list(targets or [])
         self.timeout = timeout
@@ -128,7 +142,7 @@ class WorktreeOracle:
         root.mkdir(parents=True, exist_ok=True)
         for i in range(self.jobs):
             wt = root / f"wt{i}"
-            _git(self.repo, "worktree", "add", "--detach", str(wt), self.base)
+            _git(self.repo, "worktree", "add", "--detach", str(wt), self.base_commit)
             self._worktrees.append(wt)
 
     def close(self) -> None:
@@ -182,7 +196,8 @@ class WorktreeOracle:
 
     def _key(self, patch_text: str) -> str:
         return content_key(
-            self.base, self.test_cmd, " ".join(self.targets), self.rest_cmd or "", patch_text
+            self.base_commit, self.test_cmd, " ".join(self.targets), self.rest_cmd or "",
+            patch_text,
         )
 
     def _cached(self, key: str) -> RunResult | None:
@@ -192,6 +207,9 @@ class WorktreeOracle:
             return None
         if hit.get("reason") == "timeout" and hit.get("timeout", 0.0) < self.timeout:
             # Timed out under a shorter limit than the current one: run again.
+            return None
+        if hit["outcome"] != Outcome.UNRESOLVED.value and hit.get("reruns", 0) < self.reruns:
+            # A pass or fail confirmed by fewer runs than asked for now: run again.
             return None
         return RunResult(
             Outcome(hit["outcome"]), hit["seconds"], hit.get("returncode"), cached=True,
@@ -297,6 +315,7 @@ class WorktreeOracle:
                     "flaky": result.flaky,
                     "reason": result.reason,
                     "timeout": self.timeout,
+                    "reruns": self.reruns,
                 },
             )
         return result
