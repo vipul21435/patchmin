@@ -184,7 +184,7 @@ def minimize_patch(
     if not state.passes(render(free)):
         return finish([], trace, "full patch does not make the target tests pass")
     if state.passes(render([])):
-        what = "the pinned hunks alone" if pinned else "without the patch"
+        what = "with the pinned hunks alone" if pinned else "without the patch"
         return finish([], trace, f"target tests already pass {what}")
     needed = state.search(free, render, trace)
     return finish(needed, trace)
