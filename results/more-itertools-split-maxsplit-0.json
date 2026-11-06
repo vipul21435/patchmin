@@ -1,0 +1,203 @@
+{
+  "case": {
+    "name": "more-itertools-split-maxsplit-0",
+    "url": "https://github.com/more-itertools/more-itertools",
+    "commit": "ce676d24136e",
+    "subject": "Do not yield an empty list for an empty iterable when maxsplit is 0",
+    "targets": [
+      "tests/test_more.py::SplitBeforeTest::test_empty_collection",
+      "tests/test_more.py::SplitAfterTest::test_empty_collection",
+      "tests/test_more.py::SplitWhenTests::test_empty_iterable"
+    ]
+  },
+  "wall_seconds": 180.5,
+  "result": {
+    "needed": [
+      1,
+      2,
+      3
+    ],
+    "pinned": [
+      4,
+      5,
+      6,
+      7
+    ],
+    "hunks": [
+      {
+        "index": 0,
+        "label": "docs/versions.rst:10",
+        "needed": false,
+        "added": 1,
+        "removed": 0,
+        "heading": "Unreleased",
+        "kind": "docs",
+        "pinned": false,
+        "status": "not needed"
+      },
+      {
+        "index": 1,
+        "label": "more_itertools/more.py:1618",
+        "needed": true,
+        "added": 3,
+        "removed": 1,
+        "heading": "def split_before(iterable, pred, maxsplit=-1):",
+        "kind": "code",
+        "pinned": false,
+        "status": "needed"
+      },
+      {
+        "index": 2,
+        "label": "more_itertools/more.py:1654",
+        "needed": true,
+        "added": 3,
+        "removed": 1,
+        "heading": "def split_after(iterable, pred, maxsplit=-1):",
+        "kind": "code",
+        "pinned": false,
+        "status": "needed"
+      },
+      {
+        "index": 3,
+        "label": "more_itertools/more.py:1694",
+        "needed": true,
+        "added": 3,
+        "removed": 1,
+        "heading": "def split_when(iterable, pred, maxsplit=-1):",
+        "kind": "code",
+        "pinned": false,
+        "status": "needed"
+      },
+      {
+        "index": 4,
+        "label": "tests/test_more.py:1490",
+        "needed": true,
+        "added": 8,
+        "removed": 8,
+        "heading": "class SplitAtTests(TestCase):",
+        "kind": "test",
+        "pinned": true,
+        "status": "pinned"
+      },
+      {
+        "index": 5,
+        "label": "tests/test_more.py:1546",
+        "needed": true,
+        "added": 7,
+        "removed": 3,
+        "heading": "class SplitBeforeTest(TestCase):",
+        "kind": "test",
+        "pinned": true,
+        "status": "pinned"
+      },
+      {
+        "index": 6,
+        "label": "tests/test_more.py:1603",
+        "needed": true,
+        "added": 9,
+        "removed": 0,
+        "heading": "class SplitAfterTest(TestCase):",
+        "kind": "test",
+        "pinned": true,
+        "status": "pinned"
+      },
+      {
+        "index": 7,
+        "label": "tests/test_more.py:1687",
+        "needed": true,
+        "added": 7,
+        "removed": 3,
+        "heading": "class SplitWhenTests(TestCase):",
+        "kind": "test",
+        "pinned": true,
+        "status": "pinned"
+      }
+    ],
+    "runs": 90,
+    "cached_hits": 4,
+    "flaky_runs": 0,
+    "unresolved": {},
+    "confirm": [
+      "pass",
+      "pass"
+    ],
+    "confirmed": true,
+    "seconds": 180.319,
+    "tests": 46,
+    "lines": [
+      {
+        "hunk": 1,
+        "position": 3,
+        "text": "-        yield list(iterable)",
+        "needed": true
+      },
+      {
+        "hunk": 1,
+        "position": 4,
+        "text": "+        buf = list(iterable)",
+        "needed": true
+      },
+      {
+        "hunk": 1,
+        "position": 5,
+        "text": "+        if buf:",
+        "needed": true
+      },
+      {
+        "hunk": 1,
+        "position": 6,
+        "text": "+            yield buf",
+        "needed": true
+      },
+      {
+        "hunk": 2,
+        "position": 3,
+        "text": "-        yield list(iterable)",
+        "needed": true
+      },
+      {
+        "hunk": 2,
+        "position": 4,
+        "text": "+        buf = list(iterable)",
+        "needed": true
+      },
+      {
+        "hunk": 2,
+        "position": 5,
+        "text": "+        if buf:",
+        "needed": true
+      },
+      {
+        "hunk": 2,
+        "position": 6,
+        "text": "+            yield buf",
+        "needed": true
+      },
+      {
+        "hunk": 3,
+        "position": 3,
+        "text": "-        yield list(iterable)",
+        "needed": true
+      },
+      {
+        "hunk": 3,
+        "position": 4,
+        "text": "+        buf = list(iterable)",
+        "needed": true
+      },
+      {
+        "hunk": 3,
+        "position": 5,
+        "text": "+        if buf:",
+        "needed": true
+      },
+      {
+        "hunk": 3,
+        "position": 6,
+        "text": "+            yield buf",
+        "needed": true
+      }
+    ],
+    "error": null
+  }
+}
