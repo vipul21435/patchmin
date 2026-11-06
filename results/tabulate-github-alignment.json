@@ -1,7 +1,6 @@
 {
   "case": {
     "name": "tabulate-github-alignment",
-    "url": "https://github.com/astanin/python-tabulate",
     "commit": "8014ec66820c",
     "subject": "Fix alignments in `github` tables",
     "targets": [
@@ -11,6 +10,7 @@
       "test/test_output.py::test_simple_headerless_with_sep_line_with_padding_in_tablefmt"
     ]
   },
+  "source": "https://pypi.org/project/tabulate/",
   "wall_seconds": 11.8,
   "result": {
     "needed": [

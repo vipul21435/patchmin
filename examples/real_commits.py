@@ -1,6 +1,7 @@
 """Run patchmin on three real bug-fix commits from public Python libraries.
 
-Each case names a public repository, a fix commit, the tests that the fix
+Each case names a library on PyPI (its source repository is the Homepage
+link of its PyPI page), a fix commit, the tests that the fix
 turns from failing to passing, and the test directory whose hunks are pinned
 (always applied). The rest of the suite runs as ``--rest-cmd``, so a subset
 counts only when the whole suite stays green.
@@ -23,12 +24,13 @@ import json
 import subprocess
 import sys
 import time
+import urllib.request
 from pathlib import Path
 
 CASES = [
     {
         "name": "tabulate-github-alignment",
-        "url": "https://github.com/astanin/python-tabulate",
+        "pypi": "tabulate",
         "dir": "tabulate",
         "commit": "8014ec66820c",
         "subject": "Fix alignments in `github` tables",
@@ -43,7 +45,7 @@ CASES = [
     },
     {
         "name": "tabulate-asciidoc-whitespace",
-        "url": "https://github.com/astanin/python-tabulate",
+        "pypi": "tabulate",
         "dir": "tabulate",
         "commit": "3aa568c66987",
         "subject": "fix #408 - remove trailing whitespace from asciidoc output",
@@ -57,7 +59,7 @@ CASES = [
     },
     {
         "name": "more-itertools-split-maxsplit-0",
-        "url": "https://github.com/more-itertools/more-itertools",
+        "pypi": "more-itertools",
         "dir": "more-itertools",
         "commit": "ce676d24136e",
         "subject": "Do not yield an empty list for an empty iterable when maxsplit is 0",
@@ -72,11 +74,19 @@ CASES = [
 ]
 
 
+def source_url(pypi_name: str) -> str:
+    """The source repository listed as Homepage on the project's PyPI page."""
+    with urllib.request.urlopen(f"https://pypi.org/pypi/{pypi_name}/json", timeout=30) as resp:
+        info = json.load(resp)["info"]
+    return info["project_urls"]["Homepage"]
+
+
 def ensure_clone(data: Path, case: dict) -> Path:
     repo = data / case["dir"]
     if not (repo / ".git").exists():
         data.mkdir(parents=True, exist_ok=True)
-        subprocess.run(["git", "clone", "-q", case["url"], str(repo)], check=True)
+        url = source_url(case["pypi"])
+        subprocess.run(["git", "clone", "-q", url, str(repo)], check=True)
     return repo
 
 
@@ -125,7 +135,8 @@ def main() -> int:
             return 1
         result = json.loads(proc.stdout)
         record = {
-            "case": {k: case[k] for k in ("name", "url", "commit", "subject", "targets")},
+            "case": {k: case[k] for k in ("name", "commit", "subject", "targets")},
+            "source": f"https://pypi.org/project/{case['pypi']}/",
             "wall_seconds": round(wall, 1),
             "result": result,
         }

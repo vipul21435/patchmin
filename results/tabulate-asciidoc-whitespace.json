@@ -1,7 +1,6 @@
 {
   "case": {
     "name": "tabulate-asciidoc-whitespace",
-    "url": "https://github.com/astanin/python-tabulate",
     "commit": "3aa568c66987",
     "subject": "fix #408 - remove trailing whitespace from asciidoc output",
     "targets": [
@@ -10,6 +9,7 @@
       "test/test_regression.py::test_asciidoc_without_trailing_whitespace"
     ]
   },
+  "source": "https://pypi.org/project/tabulate/",
   "wall_seconds": 10.2,
   "result": {
     "needed": [

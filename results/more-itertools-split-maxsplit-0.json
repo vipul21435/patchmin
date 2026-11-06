@@ -1,7 +1,6 @@
 {
   "case": {
     "name": "more-itertools-split-maxsplit-0",
-    "url": "https://github.com/more-itertools/more-itertools",
     "commit": "ce676d24136e",
     "subject": "Do not yield an empty list for an empty iterable when maxsplit is 0",
     "targets": [
@@ -10,6 +9,7 @@
       "tests/test_more.py::SplitWhenTests::test_empty_iterable"
     ]
   },
+  "source": "https://pypi.org/project/more-itertools/",
   "wall_seconds": 180.5,
   "result": {
     "needed": [
