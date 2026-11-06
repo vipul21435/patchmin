@@ -12,6 +12,7 @@ from .diff import (
     change_lines,
     classify_hunk,
     hunk_with_lines,
+    lines_searchable,
     matches_any,
     parse_patch,
     render_patch,
@@ -229,15 +230,12 @@ def refine_lines(patch: Patch, result: MinimizeResult, oracle: WorktreeOracle) -
         if hunk.index not in applied or hunk.index in pinned:
             continue
         positions = change_lines(hunk)
+        searchable = len(positions) > 1 and lines_searchable(hunk)
 
         def render(subset: list[int], hunk: Hunk = hunk, current: Patch = current) -> str:
             return render_patch(with_hunk(current, hunk_with_lines(hunk, set(subset))), applied)
 
-        kept = (
-            set(state.search(positions, render, result.trace))
-            if len(positions) > 1
-            else set(positions)
-        )
+        kept = set(state.search(positions, render, result.trace)) if searchable else set(positions)
         verdicts.extend(
             LineVerdict(hunk.index, i, hunk.lines[i], i in kept) for i in positions
         )

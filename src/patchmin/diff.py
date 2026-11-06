@@ -156,6 +156,15 @@ def change_lines(hunk: Hunk) -> list[int]:
     return [i for i, ln in enumerate(hunk.lines) if ln[:1] in ("+", "-")]
 
 
+def lines_searchable(hunk: Hunk) -> bool:
+    """False for a hunk that deletes its whole file.
+
+    Keeping only some of its ``-`` lines leaves a deleted file with contents,
+    which ``git apply`` rejects, so such a hunk is all or nothing.
+    """
+    return hunk.new_path != "/dev/null"
+
+
 def hunk_with_lines(hunk: Hunk, keep: set[int]) -> Hunk:
     """Copy ``hunk`` keeping only the change lines at positions in ``keep``.
 
